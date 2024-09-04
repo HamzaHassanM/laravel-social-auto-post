@@ -1,0 +1,7 @@
+/vendor/
+/composer.lock
+/coverage/
+/.phpunit.cache
+/build/
+/coverage.clover
+.idea

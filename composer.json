@@ -1,0 +1,36 @@
+{
+    "name": "hamzahassanm/laravel-social-auto-post",
+    "description": "Laravel social media auto post package",
+    "type": "library",
+    "require-dev": {
+        "phpunit/phpunit": "^11.3"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "HamzaHassanM\\LaravelSocialAutoPost\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "HamzaHassanM",
+            "email": "hamza.hassan.dev@gmail.com"
+        }
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "HamzaHassanM\\LaravelSocialAutoPost\\SocialShareServiceProvider"
+            ],
+            "aliases": {
+                "FaceBook": "HamzaHassanM\\LaravelSocialAutoPost\\Facades\\FaceBook",
+                "Telegram": "HamzaHassanM\\LaravelSocialAutoPost\\Facades\\Telegram"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "require": {}
+}

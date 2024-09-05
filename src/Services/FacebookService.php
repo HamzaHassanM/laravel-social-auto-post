@@ -7,7 +7,7 @@ use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareInterface;
 use Illuminate\Support\Facades\Http;
 use function HamzaHassanM\LaravelSocialAutoPost\config;
 
-class FaceBook implements ShareInterface, ShareImagePostInterface {
+class FaceBook extends SocialMediaService implements ShareInterface, ShareImagePostInterface {
 
     private        $access_token;
     private        $page_id;

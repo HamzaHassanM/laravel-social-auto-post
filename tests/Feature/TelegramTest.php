@@ -3,8 +3,7 @@
 namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Feature;
 
 use HamzaHassanM\LaravelSocialAutoPost\Facades\Telegram;
-use HamzaHassanM\tests\Http;
-use HamzaHassanM\tests\TestCase;
+use Illuminate\Support\Facades\Http;
 
 class TelegramTest extends TestCase {
 

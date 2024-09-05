@@ -1,11 +1,9 @@
 <?php
 
-namespace HamzaHassanM\LaravelSocialAutoPost\Tests;
+namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Feature;
 
-
-use Illuminate\Foundation\Application;
-use Orchestra\Testbench\TestCase as BaseTestCase;
 use HamzaHassanM\LaravelSocialAutoPost\SocialShareServiceProvider;
+use Orchestra\Testbench\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase {
 

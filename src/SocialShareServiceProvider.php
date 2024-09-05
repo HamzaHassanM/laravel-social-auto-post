@@ -2,7 +2,7 @@
 
 namespace HamzaHassanM\LaravelSocialAutoPost;
 
-use HamzaHassanM\LaravelSocialAutoPost\Services\FaceBook;
+use HamzaHassanM\LaravelSocialAutoPost\Services\FacebookService;
 use HamzaHassanM\LaravelSocialAutoPost\Services\TelegramService;
 use Illuminate\Support\ServiceProvider;
 
@@ -16,9 +16,9 @@ class SocialShareServiceProvider extends ServiceProvider {
     }
 
     public function register() {
-        // Bind FaceBook as a singleton
-        $this->app->singleton(FaceBook::class, function ($app) {
-            return FaceBook::getInstance();
+        // Bind FacebookService as a singleton
+        $this->app->singleton(FacebookService::class, function ($app) {
+            return FacebookService::getInstance();
         });
 
         $this->app->singleton(TelegramService::class, function ($app) {
@@ -26,7 +26,7 @@ class SocialShareServiceProvider extends ServiceProvider {
         });
 
         // Optionally, register the alias for the facade
-        $this->app->alias(FaceBook::class, 'facebook');
+        $this->app->alias(FacebookService::class, 'facebook');
         $this->app->alias(TelegramService::class, 'telegram');
 
         // Optionally, register your config file

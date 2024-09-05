@@ -4,10 +4,11 @@ namespace HamzaHassanM\LaravelSocialAutoPost\Services;
 
 use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareImagePostInterface;
 use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareInterface;
+use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareVideoPostInterface;
 use Illuminate\Support\Facades\Http;
 use function HamzaHassanM\LaravelSocialAutoPost\config;
 
-class FaceBook extends SocialMediaService implements ShareInterface, ShareImagePostInterface {
+class FacebookService extends SocialMediaService implements ShareInterface, ShareImagePostInterface , ShareVideoPostInterface {
 
     private        $access_token;
     private        $page_id;
@@ -26,15 +27,53 @@ class FaceBook extends SocialMediaService implements ShareInterface, ShareImageP
     }
 
     public function shareImage($caption, $image_url) {
-        $response = Http::post('https://graph.facebook.com/v14.0/' . $this->page_id . '/photos
-            ?url=' . $image_url . '&
-            caption=' . $caption . '
-            &access_token=' . $this->access_token);
-        return $response->json();
+        $url = 'https://graph.facebook.com/v14.0/' . $this->page_id . '/photos';
+        $params = [
+            'url'          => $image_url,
+            'caption'      => $caption,
+            'access_token' => $this->access_token,
+        ];
+        return $this->sendRequest($url, 'post', $params);
     }
 
     public function share($caption, $url) {
-        $response = Http::post('https://graph.facebook.com/v14.0/' . $this->page_id . '/feed?message=' . $caption . '&link=' . $url . '/' . '&access_token=' . $this->access_token);
-        return $response->json();
+        $feedUrl = 'https://graph.facebook.com/v14.0/' . $this->page_id . '/feed';
+        $params = [
+            'message'      => $caption,
+            'link'         => $url,
+            'access_token' => $this->access_token,
+        ];
+
+        return $this->sendRequest($feedUrl, 'post', $params);
+    }
+
+
+    public function shareVideo($caption, $video_url) {
+        $url = 'https://graph.facebook.com/v14.0/' . $this->page_id . '/videos';
+        $params = [
+            'description'  => $caption,
+            'source'       => $video_url,
+            'access_token' => $this->access_token,
+        ];
+
+        return $this->sendRequest($url, 'post', $params);
+    }
+
+    public function getPageInsights() {
+        $url = 'https://graph.facebook.com/v14.0/' . $this->page_id . '/insights';
+        $params = [
+            'access_token' => $this->access_token,
+        ];
+
+        return $this->sendRequest($url, 'get', $params);
+    }
+
+    public function getPageInfo() {
+        $url = 'https://graph.facebook.com/v14.0/' . $this->page_id;
+        $params = [
+            'access_token' => $this->access_token,
+        ];
+
+        return $this->sendRequest($url, 'get', $params);
     }
 }

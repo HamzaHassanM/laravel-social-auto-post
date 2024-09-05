@@ -1,6 +1,6 @@
 <?php
 
-// src/Facades/FaceBook.php
+// src/Facades/FacebookService.php
 namespace HamzaHassanM\LaravelSocialAutoPost\Facades;
 
 use Illuminate\Support\Facades\Facade;
@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Facade;
 class FaceBook extends Facade {
 
     protected static function getFacadeAccessor() {
-        // This is the key used to bind the singleton in the service container
-        return \HamzaHassanM\LaravelSocialAutoPost\Services\FaceBook::class;
+        return \HamzaHassanM\LaravelSocialAutoPost\Services\FacebookService::class;
     }
 }

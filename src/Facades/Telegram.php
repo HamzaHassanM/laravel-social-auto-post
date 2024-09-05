@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Facade;
 class Telegram extends Facade {
 
     protected static function getFacadeAccessor() {
-        // This is the key used to bind the singleton in the service container
         return \HamzaHassanM\LaravelSocialAutoPost\Services\TelegramService::class;
     }
 }

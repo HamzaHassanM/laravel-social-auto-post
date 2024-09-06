@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    networks:
+      - app-network
+    command: ["vendor/bin/phpunit"]
+
+networks:
+  app-network:
+    driver: bridge

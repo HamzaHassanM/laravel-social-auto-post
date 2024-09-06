@@ -6,3 +6,30 @@
 /coverage.clover
 .idea
 .phpunit.result.cache
+
+# Composer dependencies
+/vendor/
+
+# PHPUnit
+phpunit.result.cache
+phpunit.xml
+phpunit.xml.dist
+
+# Laravel cache and logs
+/storage/*
+!/storage/app
+!/storage/public
+
+# Logs
+*.log
+
+# IDE and editor files
+/.idea/
+/.vscode/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker-compose.override.yml

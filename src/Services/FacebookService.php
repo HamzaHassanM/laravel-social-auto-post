@@ -28,15 +28,20 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
     /**
      * @var FacebookService|null Singleton instance
      */
-    private static $instance;
+    private static ?FacebookService $instance = null;
+    /**
+     * Facebook API version
+     */
+    private const API_VERSION = 'v20.0';
+
 
     /**
      * Private constructor to prevent direct instantiation.
      */
 
-    private function __construct() {
-        $this->access_token = config('autopost.facebook_access_token');
-        $this->page_id = config('autopost.facebook_page_id');
+    private function __construct(string $accessToken, string $pageId) {
+        $this->access_token = $accessToken;
+        $this->page_id = $pageId;
     }
 
     /**
@@ -46,7 +51,9 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      */
     public static function getInstance() {
         if (self::$instance === null) {
-            self::$instance = new self();
+            $accessToken = config('autopost.facebook_access_token');
+            $pageId = config('autopost.facebook_page_id');
+            self::$instance = new self($accessToken, $pageId);
         }
         return self::$instance;
     }
@@ -60,12 +67,12 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * @return mixed Response from the Facebook API.
      */
     public function shareImage($caption, $image_url) {
-        $url = 'https://graph.facebook.com/v20.0/' . $this->page_id . '/photos';
-        $params = [
-            'url'          => $image_url,
-            'caption'      => $caption,
-            'access_token' => $this->access_token,
-        ];
+        $url = $this->buildApiUrl('photos');
+        $params = $this->buildParams([
+            'url'     => $image_url,
+            'caption' => $caption,
+        ]);
+
         return $this->sendRequest($url, 'post', $params);
     }
 
@@ -79,12 +86,11 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      */
 
     public function share($caption, $url) {
-        $feedUrl = 'https://graph.facebook.com/v20.0/' . $this->page_id . '/feed';
-        $params = [
-            'message'      => $caption,
-            'link'         => $url,
-            'access_token' => $this->access_token,
-        ];
+        $feedUrl = $this->buildApiUrl('feed');
+        $params = $this->buildParams([
+            'message' => $caption,
+            'link'    => $url,
+        ]);
 
         return $this->sendRequest($feedUrl, 'post', $params);
     }
@@ -98,12 +104,11 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * @return mixed Response from the Facebook API.
      */
     public function shareVideo($caption, $video_url) {
-        $url = 'https://graph.facebook.com/v20.0/' . $this->page_id . '/videos';
-        $params = [
-            'description'  => $caption,
-            'source'       => $video_url,
-            'access_token' => $this->access_token,
-        ];
+        $url = $this->buildApiUrl('videos');
+        $params = $this->buildParams([
+            'description' => $caption,
+            'source'      => $video_url,
+        ]);
 
         return $this->sendRequest($url, 'post', $params);
     }
@@ -114,16 +119,10 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * @return mixed Response from the Facebook API.
      */
     public function getPageInsights(array $metrics = [], array $additionalParams = []): array {
-        $url = 'https://graph.facebook.com/v20.0/' . $this->page_id . '/insights';
-
-        // Default parameters
-        $params = [
-            'metric'       => implode(',', $metrics), // Join metrics with commas
-            'access_token' => $this->access_token,
-        ];
-
-        // Merge with additional parameters
-        $params = array_merge($params, $additionalParams);
+        $url = $this->buildApiUrl('insights');
+        $params = $this->buildParams(array_merge([
+            'metric' => implode(',', $metrics),
+        ], $additionalParams));
 
         return $this->sendRequest($url, 'get', $params);
     }
@@ -135,11 +134,33 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * @return mixed Response from the Facebook API.
      */
     public function getPageInfo() {
-        $url = 'https://graph.facebook.com/v20.0/' . $this->page_id;
-        $params = [
-            'access_token' => $this->access_token,
-        ];
+        $url = $this->buildApiUrl();
+        $params = $this->buildParams();
 
         return $this->sendRequest($url, 'get', $params);
+    }
+
+
+    /**
+     * Helper to build Facebook Graph API URL.
+     *
+     * @param string $endpoint
+     *
+     * @return string
+     */
+    private function buildApiUrl(string $endpoint = ''): string {
+        $apiVersion = config('autopost.facebook_api_version');
+        return 'https://graph.facebook.com/' . $apiVersion . '/' . $this->page_id . '/' . $endpoint;
+    }
+
+    /**
+     * Helper to build request parameters.
+     *
+     * @param array $params
+     *
+     * @return array
+     */
+    private function buildParams(array $params = []): array {
+        return array_merge($params, ['access_token' => $this->access_token]);
     }
 }

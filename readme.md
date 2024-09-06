@@ -2,6 +2,10 @@
 
 A Laravel package to facilitate automatic social media posting on platforms like Facebook and Telegram.
 
+## Available Languages
+- [English (EN)](README.md)
+- [العربية (AR)](README_AR.md)
+
 ## Installation
 
 To install the package, run the following command:

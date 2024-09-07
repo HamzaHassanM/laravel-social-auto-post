@@ -1,0 +1,7 @@
+# Ignore files and directories not needed in the Docker image
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+*.md
+*.log

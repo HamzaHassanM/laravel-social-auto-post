@@ -31,15 +31,15 @@ class TelegramService extends SocialMediaService implements ShareInterface,
     /**
      * @var TelegramService|null Singleton instance
      */
-    private static $instance;
+    private static ?TelegramService $instance = null;
 
     /**
      * Private constructor to prevent direct instantiation.
      */
 
-    private function __construct() {
-        $this->telegram_bot_token = config('autopost.telegram_bot_token');
-        $this->chat_id = config('autopost.telegram_chat_id');
+    private function __construct(string $telegram_bot_token, string $chat_id) {
+        $this->telegram_bot_token = $telegram_bot_token;
+        $this->chat_id = $chat_id;
     }
 
     /**
@@ -47,10 +47,11 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      *
      * @return TelegramService
      */
-
-    public static function getInstance() {
+    public static function getInstance(): TelegramService {
         if (self::$instance === null) {
-            self::$instance = new self();
+            $telegramBotToken = config('autopost.telegram_bot_token');
+            $chatId = config('autopost.telegram_chat_id');
+            self::$instance = new self($telegramBotToken, $chatId);
         }
         return self::$instance;
     }
@@ -64,14 +65,14 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * @return mixed Response from the Telegram API.
      */
     public function share($caption, $url) {
-        $sendMessageUrl = 'https://api.telegram.org/bot' . $this->telegram_bot_token . '/sendMessage';
+        $sendMessageUrl = $this->buildApiUrl('sendMessage');
         $params = [
             'chat_id'    => $this->chat_id,
             'text'       => $caption . "\n" . $url,
             'parse_mode' => 'Markdown',
         ];
 
-        return $this->sendRequest($sendMessageUrl, 'get', $params);
+        return $this->sendRequest($sendMessageUrl, 'post', $params);
     }
 
     /**
@@ -83,8 +84,8 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * @return mixed Response from the Telegram API.
      */
 
-    public function shareImage($caption, $image_url) {
-        $sendPhotoUrl = 'https://api.telegram.org/bot' . $this->telegram_bot_token . '/sendPhoto';
+    public function shareImage($caption, $image_url): mixed {
+        $sendPhotoUrl = $this->buildApiUrl('sendPhoto');
         $params = [
             'chat_id'    => $this->chat_id,
             'photo'      => $image_url,
@@ -92,7 +93,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
             'parse_mode' => 'Markdown',
         ];
 
-        return $this->sendRequest($sendPhotoUrl, 'get', $params);
+        return $this->sendRequest($sendPhotoUrl, 'post', $params);
     }
 
     /**
@@ -104,7 +105,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * @return mixed Response from the Telegram API.
      */
     public function shareDocument($caption, $document_url) {
-        $sendDocumentUrl = 'https://api.telegram.org/bot' . $this->telegram_bot_token . '/sendDocument';
+        $sendDocumentUrl = $this->buildApiUrl('sendDocument');
         $params = [
             'chat_id'    => $this->chat_id,
             'document'   => $document_url,
@@ -112,7 +113,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
             'parse_mode' => 'Markdown',
         ];
 
-        return $this->sendRequest($sendDocumentUrl, 'get', $params);
+        return $this->sendRequest($sendDocumentUrl, 'post', $params);
     }
 
     /**
@@ -124,7 +125,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * @return mixed Response from the Telegram API.
      */
     public function shareVideo($caption, $video_url) {
-        $sendVideoUrl = 'https://api.telegram.org/bot' . $this->telegram_bot_token . '/sendVideo';
+        $sendVideoUrl = $this->buildApiUrl('sendVideo');
         $params = [
             'chat_id'    => $this->chat_id,
             'video'      => $video_url,
@@ -132,7 +133,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
             'parse_mode' => 'Markdown',
         ];
 
-        return $this->sendRequest($sendVideoUrl, 'get', $params);
+        return $this->sendRequest($sendVideoUrl, 'post', $params);
     }
 
     /**
@@ -142,9 +143,21 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      */
 
     public function getUpdates() {
-        $getUpdatesUrl = 'https://api.telegram.org/bot' . $this->telegram_bot_token . '/getUpdates';
+        $getUpdatesUrl = $this->buildApiUrl('getUpdates');
         $params = [];
 
         return $this->sendRequest($getUpdatesUrl, 'get', $params);
+    }
+
+    /**
+     * Helper to build Telegram API URLs.
+     *
+     * @param string $endpoint
+     *
+     * @return string
+     */
+    private function buildApiUrl(string $endpoint): string {
+        $baseUrl = config('autopost.telegram_api_base_url');
+        return $baseUrl . $this->telegram_bot_token . '/' . $endpoint;
     }
 }

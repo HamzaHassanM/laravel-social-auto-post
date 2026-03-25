@@ -1,9 +1,12 @@
 # Laravel Social Auto Post
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
-[![Total Downloads](https://img.shields.io/packagist/dt/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
-[![License](https://img.shields.io/packagist/l/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
-[![PHP Version](https://img.shields.io/packagist/php-v/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![Latest Version](https://img.shields.io/packagist/v/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![Total Downloads](https://img.shields.io/packagist/dt/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![Monthly Downloads](https://img.shields.io/packagist/dm/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![License](https://img.shields.io/packagist/l/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![PHP Version](https://img.shields.io/packagist/php-v/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![GitHub Stars](https://img.shields.io/github/stars/hamzahassanm/laravel-social-auto-post)](https://github.com/hamzahassanm/laravel-social-auto-post)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/hamzahassanm/laravel-social-auto-post/ci)](https://github.com/hamzahassanm/laravel-social-auto-post/actions)
 
 A comprehensive Laravel package for automatic social media posting across **8 major platforms**: Facebook, Twitter/X, LinkedIn, Instagram, TikTok, YouTube, Pinterest, and Telegram. Post to one platform or all platforms simultaneously with a unified API.
 
@@ -40,13 +43,32 @@ A comprehensive Laravel package for automatic social media posting across **8 ma
 ### Requirements
 
 - PHP 8.1 or higher
-- Laravel 11.0 or higher
+- Laravel 11.0 - 13.x
 - Composer
+
+### Laravel Version Compatibility
+
+| Package Version | Laravel Version | PHP Version | Status |
+|----------------|-----------------|-------------|--------|
+| 2.2.0          | Laravel 13.x    | PHP 8.2+    | Latest |
+| 2.1.0          | Laravel 12.x    | PHP 8.1+    | Supported |
+| 2.0.0          | Laravel 11.x    | PHP 8.1+    | Supported |
+| 1.x            | Laravel 10.x    | PHP 8.0+    | Legacy |
 
 ### Install via Composer
 
 ```bash
-composer require hamzahassanm/laravel-social-auto-post
+# Laravel 13.x (latest)
+composer require hamzahassanm/laravel-social-auto-post:^2.2
+
+# Laravel 12.x
+composer require hamzahassanm/laravel-social-auto-post:^2.1
+
+# Laravel 11.x
+composer require hamzahassanm/laravel-social-auto-post:^2.0
+
+# Laravel 10.x (Legacy)
+composer require hamzahassanm/laravel-social-auto-post:^1.0
 ```
 
 ### Publish Configuration

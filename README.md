@@ -1,3 +1,14 @@
+<div align="center">
+  🌐 
+  <a href="README.md">English</a> •
+  <a href="README_AR.md">العربية</a> •
+  <a href="README_TR.md">Türkçe</a> •
+  <a href="README_ES.md">Español</a> •
+  <a href="README_FR.md">Français</a> •
+  <a href="README_ZH.md">简体中文</a>
+</div>
+<br>
+
 # Laravel Social Auto Post
 
 [![Latest Version](https://img.shields.io/packagist/v/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)

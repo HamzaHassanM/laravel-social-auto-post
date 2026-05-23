@@ -1,5 +1,18 @@
 # Laravel Social Auto Post
 
+<div align="center" dir="ltr">
+  🌐 
+  <a href="README.md">English</a> •
+  <a href="README_AR.md">العربية</a> •
+  <a href="README_TR.md">Türkçe</a> •
+  <a href="README_ES.md">Español</a> •
+  <a href="README_FR.md">Français</a> •
+  <a href="README_ZH.md">简体中文</a>
+</div>
+<br>
+
+<div dir="rtl">
+
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
 [![Total Downloads](https://img.shields.io/packagist/dt/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
 [![License](https://img.shields.io/packagist/l/hamzahassanm/laravel-social-auto-post.svg?style=flat-square)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)

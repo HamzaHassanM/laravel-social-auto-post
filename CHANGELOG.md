@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-05-23
+
+### Added
+- **Global Documentation**: Translated README into Turkish (`README_TR.md`), Spanish (`README_ES.md`), French (`README_FR.md`), and Chinese (`README_ZH.md`).
+- **Contributing Guidelines**: Added `CONTRIBUTING.md` to help developers onboard and contribute to the package.
+
 ## [2.3.0] - 2026-05-23
 
 ### Added

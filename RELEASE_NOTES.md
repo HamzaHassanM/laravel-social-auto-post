@@ -1,3 +1,12 @@
+# Release Notes - v2.3.1
+
+## 🌍 Global Documentation & Contributing Guidelines
+- Translated documentation into 4 new languages: Turkish, Spanish, French, and Chinese.
+- Added a `CONTRIBUTING.md` file to help developers onboard.
+- Added a language navigation bar to all documentation files.
+
+---
+
 # Release Notes - v2.3.0
 
 ## 🎉 Dynamic Multi-Account & SaaS Support

@@ -45,7 +45,7 @@ class InstagramService extends SocialMediaService implements ShareInterface, Sha
     /**
      * Private constructor to prevent direct instantiation.
      */
-    private function __construct(
+    public function __construct(
         string $accessToken,
         string $instagramAccountId,
         string $facebookPageId
@@ -53,6 +53,19 @@ class InstagramService extends SocialMediaService implements ShareInterface, Sha
         $this->access_token = $accessToken;
         $this->instagram_account_id = $instagramAccountId;
         $this->facebook_page_id = $facebookPageId;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(
+        string $accessToken,
+        string $instagramAccountId,
+        string $facebookPageId
+    ): self 
+    {
+        return new self($accessToken, $instagramAccountId, $facebookPageId);
     }
 
     /**

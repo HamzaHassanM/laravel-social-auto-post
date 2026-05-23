@@ -1,3 +1,27 @@
+# Release Notes - v2.3.0
+
+## 🎉 Dynamic Multi-Account & SaaS Support
+This release introduces the highly requested ability to manage multiple social media accounts dynamically at runtime, making this package fully compatible with SaaS platforms and multi-tenant applications (Resolves #3). 
+
+A huge thank you to [@am0nshi](https://github.com/am0nshi) for raising the issue and inspiring this feature!
+
+### What's New
+- **`withCredentials()` Method**: You can now bypass the `.env` file and pass authentication tokens on the fly.
+- **100% Backward Compatible**: Existing users upgrading to v2.3.0 do not need to change a single line of code. Default `.env` configurations are still used automatically if no custom credentials are provided.
+
+---
+
+# Release Notes - v2.2.1
+
+## 🐛 TikTok v2 Content Posting API (Direct Post) Support
+### Fixed
+- Upgraded TikTok API integration to fully support the new v2 Content Posting API (Direct Post).
+- Fixed an issue where videos and images were being sent to drafts/inbox instead of auto-posting directly to the timeline.
+- Added `privacy_level` (PUBLIC_TO_EVERYONE) support for TikTok posts.
+- Resolves issue #6.
+
+---
+
 # Release Notes - v2.0.0
 
 ## 🎉 Laravel Social Auto Post v2.0.0 - Complete Social Media Platform Support

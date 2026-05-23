@@ -44,7 +44,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     /**
      * Private constructor to prevent direct instantiation.
      */
-    private function __construct(
+    public function __construct(
         string $accessToken,
         string $clientKey,
         string $clientSecret
@@ -52,6 +52,19 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         $this->access_token = $accessToken;
         $this->client_key = $clientKey;
         $this->client_secret = $clientSecret;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(
+        string $accessToken,
+        string $clientKey,
+        string $clientSecret
+    ): self 
+    {
+        return new self($accessToken, $clientKey, $clientSecret);
     }
 
     /**

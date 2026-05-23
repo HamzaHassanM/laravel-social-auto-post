@@ -55,7 +55,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
     /**
      * Private constructor to prevent direct instantiation.
      */
-    private function __construct(
+    public function __construct(
         string $bearerToken,
         string $apiKey,
         string $apiSecret,
@@ -67,6 +67,21 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
         $this->api_secret = $apiSecret;
         $this->access_token = $accessToken;
         $this->access_token_secret = $accessTokenSecret;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(
+        string $bearerToken,
+        string $apiKey,
+        string $apiSecret,
+        string $accessToken,
+        string $accessTokenSecret
+    ): self 
+    {
+        return new self($bearerToken, $apiKey, $apiSecret, $accessToken, $accessTokenSecret);
     }
 
     /**

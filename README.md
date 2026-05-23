@@ -50,7 +50,9 @@ A comprehensive Laravel package for automatic social media posting across **8 ma
 
 | Package Version | Laravel Version | PHP Version | Status |
 |----------------|-----------------|-------------|--------|
-| 2.2.0          | Laravel 13.x    | PHP 8.2+    | Latest |
+| 2.3.0          | Laravel 13.x    | PHP 8.2+    | Latest |
+| 2.2.1          | Laravel 13.x    | PHP 8.2+    | Supported |
+| 2.2.0          | Laravel 13.x    | PHP 8.2+    | Supported |
 | 2.1.0          | Laravel 12.x    | PHP 8.1+    | Supported |
 | 2.0.0          | Laravel 11.x    | PHP 8.1+    | Supported |
 | 1.x            | Laravel 10.x    | PHP 8.0+    | Legacy |
@@ -162,6 +164,51 @@ $result = SocialMedia::shareImage(['instagram', 'pinterest'], 'Check this out!',
 
 // Share videos
 $result = SocialMedia::shareVideo(['youtube', 'tiktok'], 'Watch this!', 'https://example.com/video.mp4');
+```
+
+### Dynamic Credentials (Multi-Account & SaaS)
+
+You can dynamically pass credentials at runtime to manage multiple social media accounts without changing the `.env` file. This is particularly useful for SaaS platforms and multi-tenant applications.
+
+*(Special thanks to [@am0nshi](https://github.com/am0nshi) for requesting this feature!)*
+
+```php
+use HamzaHassanM\LaravelSocialAutoPost\Facades\SocialMedia;
+
+$customCredentials = [
+    'facebook' => [
+        'access_token' => 'USER_A_FACEBOOK_TOKEN',
+        'page_id' => 'USER_A_FACEBOOK_PAGE_ID'
+    ],
+    'twitter' => [
+        'bearer_token' => 'USER_A_TWITTER_BEARER',
+        'api_key' => 'USER_A_TWITTER_KEY',
+        'api_secret' => 'USER_A_TWITTER_SECRET',
+        'access_token' => 'USER_A_TWITTER_ACCESS',
+        'access_token_secret' => 'USER_A_TWITTER_ACCESS_SECRET'
+    ]
+];
+
+// Share using the specific user's credentials
+$result = SocialMedia::withCredentials($customCredentials)
+    ->share(['facebook', 'twitter'], 'Hello from User A!', 'https://example.com');
+```
+
+If a platform is omitted from `$customCredentials`, the package will automatically fall back to the default credentials set in your `.env` file.
+
+You can also use dynamic credentials on individual platform facades:
+
+```php
+use HamzaHassanM\LaravelSocialAutoPost\Facades\Facebook;
+use HamzaHassanM\LaravelSocialAutoPost\Facades\Twitter;
+
+// Facebook specific
+$facebook = Facebook::withCredentials('FACEBOOK_ACCESS_TOKEN', 'FACEBOOK_PAGE_ID');
+$facebook->share('Hello from a specific Facebook page!', 'https://example.com');
+
+// Twitter specific
+$twitter = Twitter::withCredentials('BEARER', 'API_KEY', 'API_SECRET', 'ACCESS_TOKEN', 'ACCESS_SECRET');
+$twitter->share('Hello from a specific Twitter account!', 'https://example.com');
 ```
 
 ### Individual Platform Access
@@ -528,7 +575,7 @@ Http::fake([
 
 Check the `examples/` directory for comprehensive usage examples:
 
-- **Basic Usage**: Single platform, multi-platform, error handling
+- **Basic Usage**: Single platform, multi-platform, multi-account, error handling
 - **Advanced Usage**: Content scheduling, analytics, bulk operations
 - **Platform-Specific**: Facebook analytics, Instagram carousels, LinkedIn company pages
 - **Integration**: Laravel commands, queue jobs, event listeners
@@ -537,9 +584,10 @@ Check the `examples/` directory for comprehensive usage examples:
 ### Quick Examples
 
 ```bash
-# Run basic examples
+# Run basic usage examples
 php examples/basic-usage/single-platform.php
 php examples/basic-usage/multi-platform.php
+php examples/basic-usage/multi-account.php
 php examples/basic-usage/error-handling.php
 
 # Run platform-specific examples

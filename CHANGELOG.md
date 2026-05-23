@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-05-23
+
+### Fixed
+- **Security Vulnerability (CVE-2025-27515)**: Raised lower bounds of Laravel 10, 11, and 12 in `composer.json` (`^10.48.29`, `^11.44.1`, `^12.1.1`) to exclude versions vulnerable to the File Validation Bypass security advisory.
+
 ## [2.4.0] - 2026-05-23
 
 ### Added

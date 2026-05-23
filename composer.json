@@ -2,7 +2,6 @@
     "name": "hamzahassanm/laravel-social-auto-post",
     "description": "Laravel social media auto post package - Complete solution for posting to 8 major social media platforms",
     "type": "library",
-    "version": "2.2.0",
     "require": {
         "laravel/framework": "^13.0"
     },

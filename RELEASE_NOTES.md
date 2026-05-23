@@ -1,3 +1,10 @@
+# Release Notes - v2.3.3
+
+## 🐛 Packagist Synchronization Hotfix
+- Removed the hardcoded `"version": "2.2.0"` key from `composer.json`. This was causing tag validation mismatches (`tag does not match version`) on Packagist, which completely broke composer installations for versions `2.3.0`, `2.3.1`, and `2.3.2`. 
+
+---
+
 # Release Notes - v2.3.2
 
 ## 🛡️ Community Health & Licensing

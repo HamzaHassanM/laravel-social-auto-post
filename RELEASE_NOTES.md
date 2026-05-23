@@ -1,3 +1,17 @@
+# Release Notes - v2.4.0
+
+## 📦 Backward Compatibility (Laravel 8.x - 10.x) & CI Hardening
+This release introduces extended support for legacy frameworks (Laravel 8.x, 9.x, and 10.x) while keeping full support for modern Laravel 11.x, 12.x, and 13.x projects.
+
+### 🌟 Key Changes
+- **Extended Laravel Support**: The package is now fully compatible with Laravel 8.0 through 13.x.
+- **PHP 8.1 Minimum Declared**: Explicitly restricted minimum PHP version to `^8.1` since the project uses PHP 8.1 enums. This prevents syntax/parse crashes in older PHP environments.
+- **CI Security Hardening (PR #11)**: Constrained the automatic `GITHUB_TOKEN` permissions in GitHub Action workflows to `contents: read` to protect against unauthorized modifications or tag injection.
+- **Localization fixes**: Fixed configuration publishing instructions across Spanish, French, Turkish, and Chinese READMEs (resolved wrong service provider and tag name references).
+- **Flexible Test Suite**: Broadened dev dependencies to support PHPUnit `^9.5` through `^12.0` and Orchestra Testbench `^6.0` through `^11.0` so development environments are stable on all PHP versions.
+
+---
+
 # Release Notes - v2.3.4
 
 ## 🚀 Extended Framework Support

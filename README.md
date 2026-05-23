@@ -54,34 +54,25 @@ A comprehensive Laravel package for automatic social media posting across **8 ma
 ### Requirements
 
 - PHP 8.1 or higher
-- Laravel 11.0 - 13.x
+- Laravel 8.0 - 13.x
 - Composer
 
 ### Laravel Version Compatibility
 
 | Package Version | Laravel Version | PHP Version | Status |
 |----------------|-----------------|-------------|--------|
-| 2.3.0          | Laravel 13.x    | PHP 8.2+    | Latest |
-| 2.2.1          | Laravel 13.x    | PHP 8.2+    | Supported |
-| 2.2.0          | Laravel 13.x    | PHP 8.2+    | Supported |
-| 2.1.0          | Laravel 12.x    | PHP 8.1+    | Supported |
-| 2.0.0          | Laravel 11.x    | PHP 8.1+    | Supported |
+| 2.4.x          | Laravel 8.x - 13.x | PHP 8.1+   | Latest |
+| 2.3.x          | Laravel 11.x - 13.x| PHP 8.2+   | Supported |
+| 2.2.x          | Laravel 13.x    | PHP 8.2+    | Supported |
+| 2.1.x          | Laravel 12.x    | PHP 8.1+    | Supported |
+| 2.0.x          | Laravel 11.x    | PHP 8.1+    | Supported |
 | 1.x            | Laravel 10.x    | PHP 8.0+    | Legacy |
 
 ### Install via Composer
 
 ```bash
-# Laravel 13.x (latest)
-composer require hamzahassanm/laravel-social-auto-post:^2.2
-
-# Laravel 12.x
-composer require hamzahassanm/laravel-social-auto-post:^2.1
-
-# Laravel 11.x
-composer require hamzahassanm/laravel-social-auto-post:^2.0
-
-# Laravel 10.x (Legacy)
-composer require hamzahassanm/laravel-social-auto-post:^1.0
+# Supports Laravel 8.x, 9.x, 10.x, 11.x, 12.x, and 13.x
+composer require hamzahassanm/laravel-social-auto-post
 ```
 
 ### Publish Configuration

@@ -38,10 +38,10 @@ composer require hamzahassanm/laravel-social-auto-post
 Después de la instalación, publica el archivo de configuración:
 
 ```bash
-php artisan vendor:publish --provider="HamzaHassanM\LaravelSocialAutoPost\SocialAutoPostServiceProvider" --tag="config"
+php artisan vendor:publish --provider="HamzaHassanM\LaravelSocialAutoPost\SocialShareServiceProvider" --tag="autopost"
 ```
 
-Este comando creará un archivo `social-auto-post.php` en tu directorio `config`.
+Este comando creará un archivo `autopost.php` en tu directorio `config`.
 
 ## ⚙️ Configuración
 

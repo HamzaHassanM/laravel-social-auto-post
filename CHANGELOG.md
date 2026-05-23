@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-05-23
+
+### Added
+- **PHP Version Requirement**: Explicitly declared PHP requirement (`^8.1`) in `composer.json` to prevent installation on unsupported PHP versions (since enums require PHP 8.1+).
+- **Expanded Framework Compatibility**: Added full backward compatibility support for Laravel 8.x, 9.x, and 10.x. The package now supports Laravel 8.0 through 13.x.
+- **CI Workflow Hardening**: Merged security enhancement from PR #11, constraining GITHUB_TOKEN permissions to `contents: read` in GitHub Action workflows.
+
+### Fixed
+- **Localization Configuration Publishing**: Fixed incorrect service provider name (`SocialAutoPostServiceProvider` -> `SocialShareServiceProvider`) and tag name (`config` -> `autopost`) in French, Spanish, Turkish, and Chinese README files.
+
+### Changed
+- **Testing Suite Modernization**: Broadened Orchestra Testbench dev dependency (`^6.0` through `^11.0`) and PHPUnit dev dependency (`^9.5` through `^12.0`) to ensure development environment supports tests on older Laravel versions.
+
 ## [2.3.4] - 2026-05-23
 
 ### Changed

@@ -1,3 +1,17 @@
+# Release Notes - v2.4.1
+
+## 🔒 Security Fix: Laravel File Validation Bypass (CVE-2025-27515)
+This release updates the dependency requirements in `composer.json` to mitigate the security advisory CVE-2025-27515.
+
+### 🌟 Key Changes
+- **Dependency Raising**: Excluded vulnerable Laravel framework versions by raising the minimum bounds for supported major versions:
+  - Laravel 10.x requirement raised from `^10.0` to `^10.48.29`.
+  - Laravel 11.x requirement raised from `^11.0` to `^11.44.1`.
+  - Laravel 12.x requirement raised from `^12.0` to `^12.1.1`.
+- **Preserved Compatibility**: Legacy EOL versions (Laravel 8 and 9) and the latest Laravel 13 remain unaffected by these lower bound updates.
+
+---
+
 # Release Notes - v2.4.0
 
 ## 📦 Backward Compatibility (Laravel 8.x - 10.x) & CI Hardening

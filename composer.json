@@ -3,7 +3,7 @@
     "description": "Laravel social media auto post package - Complete solution for posting to 8 major social media platforms",
     "type": "library",
     "require": {
-        "laravel/framework": "^13.0"
+        "laravel/framework": "^11.0|^12.0|^13.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.0",

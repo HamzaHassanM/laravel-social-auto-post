@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.4] - 2026-05-23
+
+### Changed
+- **Framework Compatibility**: Expanded Laravel framework compatibility from `^13.0` to `^11.0|^12.0|^13.0` to support a wider range of legacy and current applications.
+
 ## [2.3.3] - 2026-05-23
 
 ### Fixed

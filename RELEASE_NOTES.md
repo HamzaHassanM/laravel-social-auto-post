@@ -1,3 +1,10 @@
+# Release Notes - v2.3.4
+
+## 🚀 Extended Framework Support
+- Expanded Laravel framework compatibility. The package now supports `^11.0`, `^12.0`, and `^13.0` instead of just `13.0`.
+
+---
+
 # Release Notes - v2.3.3
 
 ## 🐛 Packagist Synchronization Hotfix

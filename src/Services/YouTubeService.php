@@ -45,7 +45,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
     /**
      * Private constructor to prevent direct instantiation.
      */
-    private function __construct(
+    public function __construct(
         string $apiKey,
         string $accessToken,
         string $channelId
@@ -53,6 +53,19 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
         $this->api_key = $apiKey;
         $this->access_token = $accessToken;
         $this->channel_id = $channelId;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(
+        string $apiKey,
+        string $accessToken,
+        string $channelId
+    ): self 
+    {
+        return new self($apiKey, $accessToken, $channelId);
     }
 
     /**

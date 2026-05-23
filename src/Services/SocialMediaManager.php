@@ -28,6 +28,25 @@ class SocialMediaManager
     ];
 
     /**
+     * Optional custom credentials for dynamic multi-account support.
+     * @var array
+     */
+    private array $customCredentials = [];
+
+    /**
+     * Pass dynamic credentials to be used instead of the default config.
+     *
+     * @param array $credentials
+     * @return $this
+     */
+    public function withCredentials(array $credentials): self
+    {
+        $instance = clone $this;
+        $instance->customCredentials = $credentials;
+        return $instance;
+    }
+
+    /**
      * Share content to multiple platforms.
      *
      * @param array $platforms Array of platform names.
@@ -116,6 +135,29 @@ class SocialMediaManager
         }
 
         $serviceClass = self::PLATFORMS[$platform];
+        
+        if (isset($this->customCredentials[$platform])) {
+            $c = $this->customCredentials[$platform];
+            switch ($platform) {
+                case 'facebook':
+                    return clone $serviceClass::withCredentials($c['access_token'] ?? '', $c['page_id'] ?? '');
+                case 'twitter':
+                    return clone $serviceClass::withCredentials($c['bearer_token'] ?? '', $c['api_key'] ?? '', $c['api_secret'] ?? '', $c['access_token'] ?? '', $c['access_token_secret'] ?? '');
+                case 'linkedin':
+                    return clone $serviceClass::withCredentials($c['access_token'] ?? '', $c['person_urn'] ?? '', $c['organization_urn'] ?? null);
+                case 'instagram':
+                    return clone $serviceClass::withCredentials($c['access_token'] ?? '', $c['instagram_account_id'] ?? '', $c['facebook_page_id'] ?? '');
+                case 'tiktok':
+                    return clone $serviceClass::withCredentials($c['access_token'] ?? '', $c['client_key'] ?? '', $c['client_secret'] ?? '');
+                case 'youtube':
+                    return clone $serviceClass::withCredentials($c['api_key'] ?? '', $c['access_token'] ?? '', $c['channel_id'] ?? '');
+                case 'pinterest':
+                    return clone $serviceClass::withCredentials($c['access_token'] ?? '', $c['board_id'] ?? '');
+                case 'telegram':
+                    return clone $serviceClass::withCredentials($c['telegram_bot_token'] ?? '', $c['chat_id'] ?? '');
+            }
+        }
+
         return $serviceClass::getInstance();
     }
 
@@ -203,8 +245,7 @@ class SocialMediaManager
                     continue;
                 }
 
-                $serviceClass = self::PLATFORMS[$platform];
-                $service = $serviceClass::getInstance();
+                $service = $this->platform($platform);
 
                 if (!method_exists($service, $method)) {
                     $errors[$platform] = "Method '{$method}' is not supported on platform '{$platform}'.";

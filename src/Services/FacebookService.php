@@ -41,9 +41,18 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * Private constructor to prevent direct instantiation.
      */
 
-    private function __construct(string $accessToken, string $pageId) {
+    public function __construct(string $accessToken, string $pageId) {
         $this->access_token = $accessToken;
         $this->page_id = $pageId;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(string $accessToken, string $pageId): self 
+    {
+        return new self($accessToken, $pageId);
     }
 
     /**

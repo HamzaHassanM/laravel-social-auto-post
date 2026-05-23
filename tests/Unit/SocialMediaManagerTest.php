@@ -14,6 +14,31 @@ class SocialMediaManagerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        
+        // Mock config to prevent credential exceptions
+        config([
+            'autopost.facebook_access_token' => 'test',
+            'autopost.facebook_page_id' => 'test',
+            'autopost.twitter_bearer_token' => 'test',
+            'autopost.twitter_api_key' => 'test',
+            'autopost.twitter_api_secret' => 'test',
+            'autopost.twitter_access_token' => 'test',
+            'autopost.twitter_access_token_secret' => 'test',
+            'autopost.linkedin_access_token' => 'test',
+            'autopost.linkedin_person_urn' => 'test',
+            'autopost.linkedin_organization_urn' => 'test',
+            'autopost.instagram_access_token' => 'test',
+            'autopost.instagram_account_id' => 'test',
+            'autopost.tiktok_access_token' => 'test',
+            'autopost.tiktok_client_key' => 'test',
+            'autopost.tiktok_client_secret' => 'test',
+            'autopost.youtube_api_key' => 'test',
+            'autopost.youtube_access_token' => 'test',
+            'autopost.youtube_channel_id' => 'test',
+            'autopost.pinterest_access_token' => 'test',
+            'autopost.pinterest_board_id' => 'test',
+        ]);
+        
         $this->manager = new SocialMediaManager();
     }
 
@@ -139,7 +164,7 @@ class SocialMediaManagerTest extends TestCase
     {
         Http::fake([
             'https://graph.facebook.com/v20.0/*' => Http::response(['id' => '123'], 200),
-            'https://api.twitter.com/2/*' => Http::response(['error' => ['message' => 'Invalid token']], 401),
+            'https://api.twitter.com/2/*' => Http::response(['detail' => 'Invalid token'], 401),
             'https://api.linkedin.com/v2/*' => Http::response(['id' => '789'], 200),
         ]);
 
@@ -155,7 +180,7 @@ class SocialMediaManagerTest extends TestCase
         $this->assertTrue($result['results']['linkedin']['success']);
 
         $this->assertArrayHasKey('twitter', $result['errors']);
-        $this->assertStringContains('Invalid token', $result['errors']['twitter']);
+        $this->assertStringContainsString('Invalid token', $result['errors']['twitter']);
     }
 
     public function testPlatformMethodReturnsService()
@@ -244,6 +269,62 @@ class SocialMediaManagerTest extends TestCase
         $this->assertEquals(3, $result['error_count']);
 
         $this->assertArrayHasKey('nonexistent', $result['errors']);
-        $this->assertStringContains('not supported', $result['errors']['nonexistent']);
+        $this->assertStringContainsString('not supported', $result['errors']['nonexistent']);
+    }
+
+    public function testWithCredentialsReturnsNewInstance()
+    {
+        // Default instance
+        $defaultService = $this->manager->facebook();
+
+        // Pass custom credentials and capture the cloned instance
+        $managerWithCredentials = $this->manager->withCredentials([
+            'facebook' => [
+                'access_token' => 'custom_token',
+                'page_id' => 'custom_page_id'
+            ]
+        ]);
+
+        $customService = $managerWithCredentials->facebook();
+
+        // The custom service should be a valid FacebookService instance
+        $this->assertInstanceOf('HamzaHassanM\LaravelSocialAutoPost\Services\FacebookService', $customService);
+        
+        // It should NOT be the exact same object as the singleton default instance
+        $this->assertNotSame($defaultService, $customService);
+    }
+
+    public function testExecuteOnPlatformsWithoutCustomCredentials()
+    {
+        Http::fake([
+            'https://graph.facebook.com/v20.0/test/feed' => Http::response(['id' => 'default_123'], 200),
+        ]);
+
+        // Do NOT call withCredentials. It should fall back to the config values set in setUp() ('test')
+        $result = $this->manager->share(['facebook'], 'Test default config post', 'https://example.com');
+
+        $this->assertEquals(1, $result['total_platforms']);
+        $this->assertEquals(1, $result['success_count']);
+        $this->assertTrue($result['results']['facebook']['success']);
+        $this->assertEquals('default_123', $result['results']['facebook']['data']['id'] ?? '');
+    }
+
+    public function testExecuteOnPlatformsWithCustomCredentials()
+    {
+        Http::fake([
+            'https://graph.facebook.com/v20.0/custom_page_id/feed' => Http::response(['id' => 'custom_123'], 200),
+        ]);
+
+        $result = $this->manager->withCredentials([
+            'facebook' => [
+                'access_token' => 'custom_token',
+                'page_id' => 'custom_page_id'
+            ]
+        ])->share(['facebook'], 'Test post', 'https://example.com');
+
+        $this->assertEquals(1, $result['total_platforms']);
+        $this->assertEquals(1, $result['success_count']);
+        $this->assertTrue($result['results']['facebook']['success']);
+        $this->assertEquals('custom_123', $result['results']['facebook']['data']['id'] ?? '');
     }
 }

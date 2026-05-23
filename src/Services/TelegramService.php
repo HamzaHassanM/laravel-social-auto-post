@@ -39,9 +39,18 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * Private constructor to prevent direct instantiation.
      */
 
-    private function __construct(string $telegram_bot_token, string $chat_id) {
+    public function __construct(string $telegram_bot_token, string $chat_id) {
         $this->telegram_bot_token = $telegram_bot_token;
         $this->chat_id = $chat_id;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(string $telegram_bot_token, string $chat_id): self 
+    {
+        return new self($telegram_bot_token, $chat_id);
     }
 
     /**

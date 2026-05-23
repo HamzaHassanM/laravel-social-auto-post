@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-05-23
+
+### Added
+- **Multi-Account Support**: Added `withCredentials()` method to dynamically authenticate multiple social media accounts at runtime (Resolves #3). Special thanks to [@am0nshi](https://github.com/am0nshi) for suggesting and inspiring this feature!
+- **Public Constructors**: Platform services can now be manually instantiated for SaaS and multi-tenant applications.
+
+## [2.2.1] - 2026-05-23
+
+### Fixed
+- **TikTok API**: Upgraded TikTok API integration to fully support the new v2 Content Posting API (Direct Post) (Resolves #6).
+- **TikTok Privacy**: Added `privacy_level` (PUBLIC_TO_EVERYONE) support for TikTok posts.
+
 ## [2.2.0] - 2025-03-25
 
 ### Updated

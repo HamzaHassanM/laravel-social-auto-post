@@ -45,7 +45,7 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
     /**
      * Private constructor to prevent direct instantiation.
      */
-    private function __construct(
+    public function __construct(
         string $accessToken,
         string $personUrn,
         string $organizationUrn = null
@@ -53,6 +53,19 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         $this->access_token = $accessToken;
         $this->person_urn = $personUrn;
         $this->organization_urn = $organizationUrn;
+    }
+
+    
+    /**
+     * Create a new instance dynamically with custom credentials.
+     */
+    public static function withCredentials(
+        string $accessToken,
+        string $personUrn,
+        string $organizationUrn = null
+    ): self 
+    {
+        return new self($accessToken, $personUrn, $organizationUrn);
     }
 
     /**

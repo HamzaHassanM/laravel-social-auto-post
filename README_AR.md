@@ -43,6 +43,17 @@
 - Laravel 11.0 أو أعلى
 - Composer
 
+### توافق إصدار Laravel
+
+| إصدار الحزمة | إصدار Laravel | إصدار PHP | الحالة |
+|----------------|-----------------|-------------|--------|
+| 2.3.0          | Laravel 13.x    | PHP 8.2+    | الأحدث |
+| 2.2.1          | Laravel 13.x    | PHP 8.2+    | مدعوم |
+| 2.2.0          | Laravel 13.x    | PHP 8.2+    | مدعوم |
+| 2.1.0          | Laravel 12.x    | PHP 8.1+    | مدعوم |
+| 2.0.0          | Laravel 11.x    | PHP 8.1+    | مدعوم |
+| 1.x            | Laravel 10.x    | PHP 8.0+    | قديم |
+
 ### التثبيت عبر Composer
 
 ```bash
@@ -140,6 +151,51 @@ $result = SocialMedia::shareImage(['instagram', 'pinterest'], 'تحقق من ه�
 
 // شارك الفيديوهات
 $result = SocialMedia::shareVideo(['youtube', 'tiktok'], 'شاهد هذا!', 'https://example.com/video.mp4');
+```
+
+### الاعتمادات الديناميكية (Multi-Account & SaaS)
+
+يمكنك تمرير بيانات الاعتماد ديناميكيًا في وقت التشغيل لإدارة حسابات تواصل اجتماعي متعددة دون تغيير ملف `.env`. هذا مفيد بشكل خاص لمنصات SaaS والتطبيقات متعددة المستخدمين (Multi-tenant).
+
+*(شكر خاص لـ [@am0nshi](https://github.com/am0nshi) لطلب هذه الميزة!)*
+
+```php
+use HamzaHassanM\LaravelSocialAutoPost\Facades\SocialMedia;
+
+$customCredentials = [
+    'facebook' => [
+        'access_token' => 'USER_A_FACEBOOK_TOKEN',
+        'page_id' => 'USER_A_FACEBOOK_PAGE_ID'
+    ],
+    'twitter' => [
+        'bearer_token' => 'USER_A_TWITTER_BEARER',
+        'api_key' => 'USER_A_TWITTER_KEY',
+        'api_secret' => 'USER_A_TWITTER_SECRET',
+        'access_token' => 'USER_A_TWITTER_ACCESS',
+        'access_token_secret' => 'USER_A_TWITTER_ACCESS_SECRET'
+    ]
+];
+
+// النشر باستخدام بيانات اعتماد المستخدم المحدد
+$result = SocialMedia::withCredentials($customCredentials)
+    ->share(['facebook', 'twitter'], 'مرحباً من المستخدم أ!', 'https://example.com');
+```
+
+إذا تم حذف منصة من مصفوفة `$customCredentials`، فستعود الحزمة تلقائيًا لاستخدام بيانات الاعتماد الافتراضية المحددة في ملف `.env`.
+
+يمكنك أيضًا استخدام بيانات الاعتماد الديناميكية للمنصات الفردية بشكل مباشر:
+
+```php
+use HamzaHassanM\LaravelSocialAutoPost\Facades\Facebook;
+use HamzaHassanM\LaravelSocialAutoPost\Facades\Twitter;
+
+// النشر عبر فيسبوك ببيانات محددة
+$facebook = Facebook::withCredentials('FACEBOOK_ACCESS_TOKEN', 'FACEBOOK_PAGE_ID');
+$facebook->share('مرحباً من صفحة فيسبوك محددة!', 'https://example.com');
+
+// النشر عبر تويتر ببيانات محددة
+$twitter = Twitter::withCredentials('BEARER', 'API_KEY', 'API_SECRET', 'ACCESS_TOKEN', 'ACCESS_SECRET');
+$twitter->share('مرحباً من حساب تويتر محدد!', 'https://example.com');
 ```
 
 ### الوصول الفردي للمنصات
@@ -506,7 +562,7 @@ Http::fake([
 
 تحقق من مجلد `examples/` للحصول على أمثلة شاملة للاستخدام:
 
-- **الاستخدام الأساسي**: منصة واحدة، منصات متعددة، معالجة الأخطاء
+- **الاستخدام الأساسي**: منصة واحدة، منصات متعددة، حسابات متعددة، معالجة الأخطاء
 - **الاستخدام المتقدم**: جدولة المحتوى، التحليلات، العمليات المجمعة
 - **خاص بكل منصة**: تحليلات Facebook، كاروسيل Instagram، صفحات شركة LinkedIn
 - **التكامل**: أوامر Laravel Artisan، وظائف Laravel Queue، مستمعي أحداث Laravel
@@ -518,6 +574,7 @@ Http::fake([
 # تشغيل الأمثلة الأساسية
 php examples/basic-usage/single-platform.php
 php examples/basic-usage/multi-platform.php
+php examples/basic-usage/multi-account.php
 php examples/basic-usage/error-handling.php
 
 # تشغيل الأمثلة الخاصة بكل منصة

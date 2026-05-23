@@ -1,3 +1,13 @@
+# Release Notes - v2.3.2
+
+## 🛡️ Community Health & Licensing
+- Added official MIT `LICENSE`.
+- Added `CODE_OF_CONDUCT.md` to foster a welcoming community.
+- Added `SECURITY.md` for responsible vulnerability reporting.
+- Added GitHub templates (Bug Reports, Feature Requests, PRs) to standardize contributions.
+
+---
+
 # Release Notes - v2.3.1
 
 ## 🌍 Global Documentation & Contributing Guidelines

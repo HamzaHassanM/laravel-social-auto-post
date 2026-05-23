@@ -285,8 +285,14 @@ $recentMedia = Instagram::getRecentMedia(25);
 ```php
 use TikTok;
 
-// نشر الفيديوهات
+// نشر الفيديوهات (Direct Post - ينشر تلقائياً في الصفحة)
 TikTok::shareVideo('التعليق', 'https://example.com/video.mp4');
+
+// نشر صور كاروسيل (Direct Post)
+TikTok::shareImage('التعليق', 'https://example.com/image.jpg');
+
+// ملاحظة: TikTok لا يدعم المنشورات النصية فقط (طريقة share() سترمي استثناء)
+// ملاحظة: إذا كان تطبيق TikTok الخاص بك غير مراجع (unaudited)، فسيتم تعيين خصوصية جميع المنشورات إلى خاص (SELF_ONLY) افتراضياً.
 
 // التحليلات
 $userInfo = TikTok::getUserInfo();

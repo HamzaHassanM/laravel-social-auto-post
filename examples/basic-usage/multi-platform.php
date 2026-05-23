@@ -117,7 +117,7 @@ try {
     
     foreach ($result['results'] as $platform => $platformResult) {
         if ($platformResult['success']) {
-            $videoId = $platformResult['data']['id'] ?? $platformResult['data']['video_id'] ?? 'Unknown ID';
+            $videoId = $platformResult['data']['id'] ?? $platformResult['data']['video_id'] ?? $platformResult['data']['publish_id'] ?? 'Unknown ID';
             echo "   ✅ {$platform}: Video ID {$videoId}\n";
         } else {
             echo "   ❌ {$platform}: " . $platformResult['error'] . "\n";

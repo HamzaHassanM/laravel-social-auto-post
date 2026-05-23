@@ -124,9 +124,13 @@ echo "🎵 TikTok Examples\n";
 echo "-----------------\n";
 
 try {
-    // Video post
+    // Video post (Upload/Inbox flow)
     $result = TikTok::shareVideo('Quick tutorial on our new feature!', 'https://example.com/videos/tutorial.mp4');
-    echo "✅ TikTok video post created: " . ($result['data']['video_id'] ?? 'Unknown ID') . "\n";
+    echo "✅ TikTok video post created: " . ($result['data']['publish_id'] ?? 'Unknown ID') . "\n";
+    
+    // Photo post
+    $result = TikTok::shareImage('Check out our new photos!', 'https://example.com/images/photo.jpg');
+    echo "✅ TikTok photo post created: " . ($result['data']['publish_id'] ?? 'Unknown ID') . "\n";
     
     // Get user info
     $userInfo = TikTok::getUserInfo();

@@ -307,8 +307,14 @@ $recentMedia = Instagram::getRecentMedia(25);
 ```php
 use TikTok;
 
-// Video posting
+// Video posting (Direct Post - auto publishes to feed)
 TikTok::shareVideo('Caption', 'https://example.com/video.mp4');
+
+// Photo carousel posting (Direct Post)
+TikTok::shareImage('Caption', 'https://example.com/image.jpg');
+
+// Note: TikTok does not support text-only posts (share() method will throw an exception)
+// Note: If your TikTok Developer App is unaudited, all posts will default to private (SELF_ONLY) visibility.
 
 // Analytics
 $userInfo = TikTok::getUserInfo();

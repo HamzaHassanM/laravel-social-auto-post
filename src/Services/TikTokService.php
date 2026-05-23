@@ -6,14 +6,13 @@ use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareImagePostInterface;
 use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareInterface;
 use HamzaHassanM\LaravelSocialAutoPost\Contracts\ShareVideoPostInterface;
 use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Class TikTokService
  *
- * Service for managing and posting content to TikTok using the TikTok for Developers API.
- *
- * Implements sharing of videos to TikTok.
+ * Service for managing and posting content to TikTok using the TikTok Content Posting API v2.
  */
 class TikTokService extends SocialMediaService implements ShareInterface, ShareImagePostInterface, ShareVideoPostInterface
 {
@@ -40,7 +39,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     /**
      * TikTok API base URL
      */
-    private const API_BASE_URL = 'https://open-api.tiktok.com';
+    private const API_BASE_URL = 'https://open.tiktokapis.com/v2';
 
     /**
      * Private constructor to prevent direct instantiation.
@@ -75,32 +74,21 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     }
 
     /**
-     * Share a text post with a URL to TikTok.
-     * Note: TikTok doesn't support direct text posts, so this creates a video with text overlay.
+     * TikTok does not support plain text posts.
      *
      * @param string $caption The text content of the post.
      * @param string $url The URL to share.
-     * @return array Response from the TikTok API.
+     * @return array
      * @throws SocialMediaException
      */
     public function share(string $caption, string $url): array
     {
-        $this->validateInput($caption, $url);
-        
-        try {
-            // TikTok doesn't support direct text posts
-            // We'll create a simple video with text overlay
-            $videoUrl = $this->createTextVideo($caption, $url);
-            return $this->shareVideo($caption, $videoUrl);
-        } catch (\Exception $e) {
-            Log::error('Failed to share to TikTok', ['error' => $e->getMessage()]);
-            throw new SocialMediaException('Failed to share to TikTok: ' . $e->getMessage());
-        }
+        throw new SocialMediaException('TikTok does not support plain text posts. Use shareVideo() or shareImage() instead.');
     }
 
     /**
-     * Share an image post with a caption to TikTok.
-     * Note: TikTok doesn't support direct image posts, so this creates a video from the image.
+     * Post an image carousel to TikTok.
+     * Uses Content Posting API with media_type = PHOTO and post_mode = MEDIA_UPLOAD.
      *
      * @param string $caption The caption to accompany the image.
      * @param string $image_url The URL of the image.
@@ -112,9 +100,25 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         $this->validateInput($caption, $image_url);
         
         try {
-            // Convert image to video for TikTok
-            $videoUrl = $this->convertImageToVideo($image_url, $caption);
-            return $this->shareVideo($caption, $videoUrl);
+            $url = $this->buildApiUrl('post/publish/content/init/');
+            $params = [
+                'post_info' => [
+                    'title' => mb_substr($caption, 0, 2200),
+                    'privacy_level' => 'PUBLIC_TO_EVERYONE',
+                    'disable_comment' => false,
+                ],
+                'source_info' => [
+                    'source' => 'PULL_FROM_URL',
+                    'photo_images' => [$image_url],
+                    'photo_cover_index' => 0,
+                ],
+                'post_mode' => 'DIRECT_POST',
+                'media_type' => 'PHOTO',
+            ];
+
+            $response = $this->sendRequest($url, 'post', $params);
+            Log::info('TikTok photo upload initialized', ['publish_id' => $response['data']['publish_id'] ?? null]);
+            return $response;
         } catch (\Exception $e) {
             Log::error('Failed to share image to TikTok', ['error' => $e->getMessage()]);
             throw new SocialMediaException('Failed to share image to TikTok: ' . $e->getMessage());
@@ -122,7 +126,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     }
 
     /**
-     * Share a video post with a caption to TikTok.
+     * Send a video to the user's TikTok inbox for publishing.
      *
      * @param string $caption The caption to accompany the video.
      * @param string $video_url The URL of the video.
@@ -134,48 +138,36 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         $this->validateInput($caption, $video_url);
         
         try {
-            // Step 1: Initialize upload
-            $initUrl = $this->buildApiUrl('share/video/upload/');
-            $initParams = [
-                'source_info' => [
-                    'source' => 'FILE_UPLOAD',
-                    'video_size' => $this->getVideoSize($video_url),
-                    'chunk_size' => 10485760, // 10MB chunks
-                    'total_chunk_count' => 1
-                ]
-            ];
+            // Check if we should use FILE_UPLOAD or PULL_FROM_URL. 
+            // For general public URLs, PULL_FROM_URL requires a verified domain,
+            // so using FILE_UPLOAD with chunking is generally safer for a package.
+            $sourceInfo = $this->buildFileUploadSourceInfo($video_url);
 
-            $initResponse = $this->sendRequest($initUrl, 'post', $initParams);
-            $publishId = $initResponse['data']['publish_id'];
-
-            // Step 2: Upload video
-            $uploadUrl = $initResponse['data']['upload_url'];
-            $this->uploadVideoChunk($video_url, $uploadUrl);
-
-            // Step 3: Publish video
-            $publishUrl = $this->buildApiUrl('share/video/publish/');
-            $publishParams = [
+            $url = $this->buildApiUrl('post/publish/video/init/');
+            $params = [
                 'post_info' => [
-                    'title' => $caption,
-                    'description' => $caption,
-                    'privacy_level' => 'MUTUAL_FOLLOW_FRIEND',
-                    'disable_duet' => false,
+                    'title' => mb_substr($caption, 0, 2200),
+                    'privacy_level' => 'PUBLIC_TO_EVERYONE',
                     'disable_comment' => false,
+                    'disable_duet' => false,
                     'disable_stitch' => false,
-                    'video_cover_timestamp_ms' => 1000
+                    'video_cover_timestamp_ms' => 1000,
                 ],
-                'source_info' => [
-                    'source' => 'FILE_UPLOAD',
-                    'video_size' => $this->getVideoSize($video_url),
-                    'chunk_size' => 10485760,
-                    'total_chunk_count' => 1
-                ],
-                'publish_id' => $publishId
+                'source_info' => $sourceInfo,
             ];
 
-            $response = $this->sendRequest($publishUrl, 'post', $publishParams);
-            Log::info('TikTok video post shared successfully', ['video_id' => $response['data']['video_id'] ?? null]);
-            return $response;
+            $initResponse = $this->sendRequest($url, 'post', $params);
+            $publishId = $initResponse['data']['publish_id'] ?? null;
+            $uploadUrl = $initResponse['data']['upload_url'] ?? null;
+
+            if (!$uploadUrl) {
+                throw new SocialMediaException('TikTok did not return an upload_url.');
+            }
+
+            $this->uploadVideoChunks($video_url, $uploadUrl);
+
+            Log::info('TikTok video upload initialized', compact('publishId'));
+            return $initResponse;
         } catch (\Exception $e) {
             Log::error('Failed to share video to TikTok', ['error' => $e->getMessage()]);
             throw new SocialMediaException('Failed to share video to TikTok: ' . $e->getMessage());
@@ -227,77 +219,109 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     }
 
     /**
-     * Create a text video for TikTok.
+     * Check publish status by publish_id
      *
-     * @param string $text The text to display.
-     * @param string $url The URL to include.
-     * @return string The URL of the generated video.
+     * @param string $publishId
+     * @return array
      * @throws SocialMediaException
      */
-    private function createTextVideo(string $text, string $url): string
+    public function checkPublishStatus(string $publishId): array
     {
-        // This is a simplified implementation
-        // In a real scenario, you might want to use a service to generate videos with text
-        $videoText = $text . "\n\n" . $url;
+        $url = $this->buildApiUrl('post/publish/status/fetch/');
+        return $this->sendRequest($url, 'post', ['publish_id' => $publishId]);
+    }
+
+    /**
+     * Get Creator Info
+     *
+     * @return array
+     * @throws SocialMediaException
+     */
+    public function queryCreatorInfo(): array
+    {
+        $url = $this->buildApiUrl('post/publish/creator_info/query/');
+        return $this->sendRequest($url, 'post', []);
+    }
+
+    /**
+     * Build source_info for the FILE_UPLOAD source type.
+     * 
+     * @return array<string, mixed>
+     * @throws SocialMediaException
+     */
+    private function buildFileUploadSourceInfo(string $videoUrl): array
+    {
+        $headers = @get_headers($videoUrl, true);
         
-        // For now, return a placeholder video URL
-        // In production, you should generate an actual video with the text
-        return 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4';
-    }
-
-    /**
-     * Convert image to video for TikTok.
-     *
-     * @param string $imageUrl The URL of the image.
-     * @param string $caption The caption text.
-     * @return string The URL of the generated video.
-     * @throws SocialMediaException
-     */
-    private function convertImageToVideo(string $imageUrl, string $caption): string
-    {
-        // This is a simplified implementation
-        // In a real scenario, you might want to use a service to convert images to videos
-        // For now, return a placeholder video URL
-        return 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4';
-    }
-
-    /**
-     * Get video file size.
-     *
-     * @param string $videoUrl The URL of the video.
-     * @return int The size of the video file in bytes.
-     * @throws SocialMediaException
-     */
-    private function getVideoSize(string $videoUrl): int
-    {
-        $headers = get_headers($videoUrl, 1);
-        if (!$headers || !isset($headers['Content-Length'])) {
-            throw new SocialMediaException('Could not determine video file size.');
+        // Handle array responses for redirected headers
+        $contentLength = $headers['Content-Length'] ?? $headers['content-length'] ?? 0;
+        if (is_array($contentLength)) {
+            $contentLength = end($contentLength);
         }
         
-        return (int) $headers['Content-Length'];
+        $videoSize = (int) $contentLength;
+
+        if ($videoSize === 0) {
+            // Fallback if headers fail or don't provide Content-Length
+            $content = @file_get_contents($videoUrl, false, null, 0, 1024);
+            if ($content === false) {
+                throw new SocialMediaException('Could not determine video file size or download video.');
+            }
+            
+            // Need full size
+            $fullContent = file_get_contents($videoUrl);
+            $videoSize = strlen($fullContent);
+            unset($fullContent);
+        }
+
+        $chunkSize = 10 * 1024 * 1024; // 10 MB per chunk
+        $totalChunks = (int) ceil($videoSize / $chunkSize);
+
+        return [
+            'source' => 'FILE_UPLOAD',
+            'video_size' => $videoSize,
+            'chunk_size' => $chunkSize,
+            'total_chunk_count' => $totalChunks,
+        ];
     }
 
     /**
-     * Upload video chunk to TikTok.
-     *
-     * @param string $videoUrl The URL of the video.
-     * @param string $uploadUrl The TikTok upload URL.
+     * Download a video and PUT it to TikTok's upload URL in chunks.
+     * 
      * @throws SocialMediaException
      */
-    private function uploadVideoChunk(string $videoUrl, string $uploadUrl): void
+    private function uploadVideoChunks(string $videoUrl, string $uploadUrl): void
     {
-        $videoContent = file_get_contents($videoUrl);
+        $videoContent = @file_get_contents($videoUrl);
+
         if ($videoContent === false) {
-            throw new SocialMediaException('Failed to download video from URL: ' . $videoUrl);
+            throw new SocialMediaException("Failed to download video from: {$videoUrl}");
         }
 
-        $response = \Illuminate\Support\Facades\Http::withHeaders([
-            'Content-Type' => 'application/octet-stream'
-        ])->put($uploadUrl, $videoContent);
+        $totalSize = strlen($videoContent);
+        $chunkSize = 10 * 1024 * 1024;
+        $offset = 0;
+        $chunkIndex = 0;
 
-        if (!$response->successful()) {
-            throw new SocialMediaException('Failed to upload video to TikTok');
+        while ($offset < $totalSize) {
+            $chunk = substr($videoContent, $offset, $chunkSize);
+            $chunkLength = strlen($chunk);
+            $end = $offset + $chunkLength - 1;
+
+            $response = Http::timeout(120)
+                ->withHeaders([
+                    'Content-Type' => 'video/mp4',
+                    'Content-Length' => $chunkLength,
+                    'Content-Range' => "bytes {$offset}-{$end}/{$totalSize}",
+                ])
+                ->put($uploadUrl, $chunk);
+
+            if (!$response->successful()) {
+                throw new SocialMediaException("Failed to upload chunk {$chunkIndex}: {$response->body()}");
+            }
+
+            $offset += $chunkLength;
+            $chunkIndex++;
         }
     }
 
@@ -327,7 +351,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      */
     private function buildApiUrl(string $endpoint): string
     {
-        return self::API_BASE_URL . '/' . $endpoint;
+        return self::API_BASE_URL . '/' . ltrim($endpoint, '/');
     }
 
     /**
@@ -348,15 +372,17 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         
         $headers = array_merge($defaultHeaders, $headers);
 
-        $response = \Illuminate\Support\Facades\Http::withHeaders($headers)
+        $response = Http::withHeaders($headers)
             ->{$method}($url, $params);
 
-        if (!$response->successful()) {
-            $errorData = $response->json();
-            $errorMessage = $errorData['error']['message'] ?? 'Unknown error occurred';
+        $json = $response->json();
+        $errorCode = $json['error']['code'] ?? 'ok';
+
+        if (!$response->successful() || $errorCode !== 'ok') {
+            $errorMessage = $json['error']['message'] ?? $response->body() ?? 'Unknown error occurred';
             throw new SocialMediaException("TikTok API error: {$errorMessage}");
         }
 
-        return $response->json();
+        return $json ?? [];
     }
 }

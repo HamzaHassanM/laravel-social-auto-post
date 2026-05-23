@@ -117,7 +117,14 @@ class SocialMediaManagerTest extends TestCase
     {
         Http::fake([
             'https://graph.facebook.com/v20.0/*' => Http::response(['id' => '123'], 200),
-            'https://open-api.tiktok.com/*' => Http::response(['data' => ['video_id' => '456']], 200),
+            'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/' => Http::response([
+                'data' => [
+                    'publish_id' => '456',
+                    'upload_url' => 'https://upload.tiktok.com/upload'
+                ],
+                'error' => ['code' => 'ok']
+            ], 200),
+            'https://upload.tiktok.com/upload' => Http::response([], 200),
         ]);
 
         $platforms = ['facebook', 'tiktok'];

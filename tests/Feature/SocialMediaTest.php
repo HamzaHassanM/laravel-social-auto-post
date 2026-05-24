@@ -14,6 +14,7 @@ use HamzaHassanM\LaravelSocialAutoPost\Facades\Telegram;
 use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Event;
 
 class SocialMediaTest extends TestCase
 {
@@ -458,5 +459,48 @@ class SocialMediaTest extends TestCase
         $this->assertTrue(app()->bound('pinterest'));
         $this->assertTrue(app()->bound('telegram'));
         $this->assertTrue(app()->bound('socialmedia'));
+    }
+
+    public function testSocialMediaEventsDispatched()
+    {
+        Event::fake();
+
+        Http::fake([
+            'https://graph.facebook.com/v20.0/*' => Http::response(['id' => '123'], 200),
+        ]);
+
+        SocialMedia::share(['facebook'], 'Test post', 'https://example.com');
+
+        Event::assertDispatched(\HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublishing::class, function ($event) {
+            return $event->platform === 'facebook' 
+                && $event->method === 'share' 
+                && $event->parameters === ['Test post', 'https://example.com'];
+        });
+
+        Event::assertDispatched(\HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublished::class, function ($event) {
+            return $event->platform === 'facebook' 
+                && $event->method === 'share' 
+                && $event->parameters === ['Test post', 'https://example.com']
+                && $event->result === ['id' => '123'];
+        });
+    }
+
+    public function testSocialMediaEventFailedDispatched()
+    {
+        Event::fake();
+
+        Http::fake([
+            'https://graph.facebook.com/v20.0/*' => Http::response(['error' => ['message' => 'Invalid token']], 400),
+        ]);
+
+        SocialMedia::share(['facebook'], 'Test post', 'https://example.com');
+
+        Event::assertDispatched(\HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublishing::class);
+        Event::assertDispatched(\HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostFailed::class, function ($event) {
+            return $event->platform === 'facebook' 
+                && $event->method === 'share' 
+                && $event->parameters === ['Test post', 'https://example.com']
+                && $event->exception instanceof \Exception;
+        });
     }
 }

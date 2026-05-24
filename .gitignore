@@ -33,4 +33,8 @@ Thumbs.db
 
 # Docker
 .docker-compose.override.yml
-docs/
+
+# VitePress and Docs dependencies
+docs/node_modules/
+docs/.vitepress/dist
+docs/.vitepress/cache

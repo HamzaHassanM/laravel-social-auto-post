@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-05-24
+
+### Added
+- **Laravel Events**: Added `SocialPostPublishing`, `SocialPostPublished`, and `SocialPostFailed` events to the posting lifecycle to allow applications to hook into the process (ideal for SaaS and database state syncing).
+- **Documentation Restructure**: Moved detailed setup and advanced usage guides into a dedicated `docs/` folder to keep the `README.md` clean and scannable.
+
 ## [2.4.1] - 2026-05-23
 
 ### Fixed

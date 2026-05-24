@@ -1,3 +1,15 @@
+# Release Notes - v2.5.0
+
+## 🎉 Laravel Events Integration & Modern Multilingual Docs
+This release introduces unified Laravel events hookable during the posting process and migrates all documentation to a modern VitePress website, while fully maintaining backward compatibility.
+
+### 🌟 Key Changes
+- **Laravel Events**: Hooks added to the posting lifecycle (`SocialPostPublishing`, `SocialPostPublished`, and `SocialPostFailed`) for seamless SaaS or state tracking integrations.
+- **Multilingual VitePress Documentation**: Detailed setup and advanced guides are moved from individual readmes to a dedicated, scannable docs website supporting EN, AR, TR, FR, ES, and ZH.
+- **Root Cleanup**: Removed obsolete legacy `README_*.md` files to reduce repository clutter.
+
+---
+
 # Release Notes - v2.4.1
 
 ## 🔒 Security Fix: Laravel File Validation Bypass (CVE-2025-27515)

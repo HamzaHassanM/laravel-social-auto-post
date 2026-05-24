@@ -252,11 +252,15 @@ class SocialMediaManager
                     continue;
                 }
 
+                event(new \HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublishing($platform, $method, $parameters));
+
                 $result = call_user_func_array([$service, $method], $parameters);
                 $results[$platform] = [
                     'success' => true,
                     'data' => $result
                 ];
+
+                event(new \HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublished($platform, $method, $parameters, $result));
 
                 Log::info("Successfully posted to {$platform}", [
                     'platform' => $platform,
@@ -265,6 +269,8 @@ class SocialMediaManager
                 ]);
 
             } catch (\Exception $e) {
+                event(new \HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostFailed($platform, $method, $parameters, $e));
+                
                 $errors[$platform] = $e->getMessage();
                 $results[$platform] = [
                     'success' => false,

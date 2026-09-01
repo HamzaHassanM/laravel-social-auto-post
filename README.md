@@ -15,6 +15,8 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
 [![License](https://img.shields.io/packagist/l/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
 [![PHP Version](https://img.shields.io/packagist/php-v/hamzahassanm/laravel-social-auto-post.svg)](https://packagist.org/packages/hamzahassanm/laravel-social-auto-post)
+[![Plumb score](https://plumbphp.dev/badges/hamzahassanm/laravel-social-auto-post/composite.svg)](https://plumbphp.dev/hamzahassanm/laravel-social-auto-post)
+
 
 A comprehensive Laravel package for automatic social media posting across 8 major platforms using a unified API.
 

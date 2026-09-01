@@ -4,5 +4,6 @@
     "config:recommended"
   ],
   "minimumReleaseAge": "3 days",
-  "labels": ["dependencies"]
+  "labels": ["dependencies"],
+  "schedule": ["at any time"]
 }

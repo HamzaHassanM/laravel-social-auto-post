@@ -60,12 +60,31 @@ try {
 
 ## Retry Logic
 
-The package automatically retries failed requests with exponential backoff. Configure this in `config/autopost.php` or dynamically:
+The package distinguishes between persistent errors (4xx) and transient errors (5xx, network timeouts). Failed 4xx API calls will fail-fast, while 5xx and network errors are automatically retried with exponential backoff.
+
+Configure this in `config/autopost.php` or dynamically:
 
 ```php
 // Configure retry attempts
 config(['autopost.retry_attempts' => 5]);
 
+// Configure retry exponential backoff base (e.g. 2 for 2s, 4s, 8s)
+config(['autopost.retry_backoff_base' => 2]);
+
 // Configure timeout
 config(['autopost.timeout' => 60]);
+```
+
+## Security (SSRF Protection)
+
+When downloading media from remote URLs, the package utilizes `SafeMediaFetcher` to prevent Server-Side Request Forgery (SSRF) and DNS rebinding attacks. It resolves the hostname and ensures it does not map to private, reserved, or loopback IPs before fetching the file.
+
+Configure security limits in `config/autopost.php`:
+
+```php
+// Enable or disable SSRF protection
+config(['autopost.enforce_ssrf_protection' => true]);
+
+// Set maximum allowed media size in bytes (e.g. 10MB)
+config(['autopost.max_media_size' => 10485760]);
 ```

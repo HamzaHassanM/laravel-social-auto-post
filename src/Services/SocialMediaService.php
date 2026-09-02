@@ -45,7 +45,7 @@ abstract class SocialMediaService
 
                     // 4xx Client Errors (except 429) -> Fail Fast (No retry loop)
                     if ($status >= 400 && $status < 500) {
-                        throw new SocialMediaException("API request failed (HTTP {$status}): {$errorMessage}");
+                        throw new SocialMediaException("API request failed: {$errorMessage}");
                     }
                     
                     // 5xx Server Errors -> Retryable
@@ -59,7 +59,7 @@ abstract class SocialMediaService
                         ]);
                         
                         throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
-                            "API request failed (HTTP {$status}) after {$attempt} attempts: {$errorMessage}",
+                            "API request failed: {$errorMessage}",
                             0,
                             null,
                             null,

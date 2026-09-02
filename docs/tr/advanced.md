@@ -60,12 +60,31 @@ try {
 
 ## Yeniden Deneme Mantığı (Retry Logic)
 
-Paket, başarısız istekleri üstel geri çekilme (exponential backoff) ile otomatik olarak yeniden dener. Bunu `config/autopost.php` dosyasında veya dinamik olarak yapılandırın:
+Paket, kalıcı hatalar (4xx) ve geçici hatalar (5xx, ağ zaman aşımları) arasında ayrım yapar. 4xx ile başarısız olan API çağrıları hemen başarısız (fail-fast) olurken, 5xx ve ağ hataları üstel geri çekilme (exponential backoff) ile otomatik olarak yeniden denenir.
+
+Bunu `config/autopost.php` dosyasında veya dinamik olarak yapılandırın:
 
 ```php
-// Yeniden deneme girişimlerini yapılandır
+// Yeniden deneme girişimlerinin sayısını yapılandır
 config(['autopost.retry_attempts' => 5]);
 
-// Zaman aşımını yapılandır
+// Üstel geri çekilme tabanını yapılandır (ör. 2sn, 4sn, 8sn için 2)
+config(['autopost.retry_backoff_base' => 2]);
+
+// Zaman aşımını (Timeout) yapılandır
 config(['autopost.timeout' => 60]);
+```
+
+## Güvenlik (SSRF Protection)
+
+Paket, uzak URL'lerden medya indirirken Sunucu Tarafı İstek Sahteciliğini (SSRF) ve DNS yeniden bağlama saldırılarını önlemek için `SafeMediaFetcher` kullanır. Dosyayı getirmeden önce ana bilgisayar adını (hostname) çözümler ve bunun özel (private), ayrılmış (reserved) veya geri döngü (loopback) IP'lerine işaret etmediğinden emin olur.
+
+Güvenlik sınırlarını `config/autopost.php` dosyasında yapılandırın:
+
+```php
+// SSRF korumasını etkinleştirin veya devre dışı bırakın
+config(['autopost.enforce_ssrf_protection' => true]);
+
+// İzin verilen maksimum medya boyutunu bayt cinsinden ayarlayın (ör. 10MB)
+config(['autopost.max_media_size' => 10485760]);
 ```

@@ -168,6 +168,15 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
             } else {
                 $tempFile = $video_url;
                 $isTemp   = false;
+                
+                if (!is_file($tempFile) || !is_readable($tempFile)) {
+                    throw new SocialMediaException("Invalid or unreadable local media file.");
+                }
+                
+                $maxSize = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 10485760);
+                if (filesize($tempFile) > $maxSize) {
+                    throw new SocialMediaException("File size exceeded the limit of {$maxSize} bytes.");
+                }
             }
 
             try {

@@ -21,6 +21,12 @@ class SafeMediaFetcher
     private $fileHandle = null;
 
     /**
+     * Optional handler for overriding fetch behavior in tests.
+     * @var callable|null
+     */
+    public static $fetchHandler = null;
+
+    /**
      * @param int $maxBytes Maximum file size in bytes (default 50MB)
      * @param array $allowedMimeTypes Allowed MIME types prefix (empty array = any)
      */
@@ -31,12 +37,20 @@ class SafeMediaFetcher
     }
 
     /**
-     * Static helper for ease of use.
+     * Securely fetches media from a URL, saving it to a temporary file.
+     *
+     * @param string $url The media URL.
+     * @param int|null $maxBytes Maximum file size in bytes (overrides config).
+     * @return string The absolute path to the downloaded temporary file.
      *
      * @throws SocialMediaException
      */
     public static function fetch(string $url, ?int $maxBytes = null): string
     {
+        if (is_callable(self::$fetchHandler)) {
+            return call_user_func(self::$fetchHandler, $url, $maxBytes);
+        }
+
         $maxBytes = $maxBytes ?? \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 52428800);
         
         $fetcher = new self($maxBytes);

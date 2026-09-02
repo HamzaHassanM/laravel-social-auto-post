@@ -317,7 +317,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         try {
             while ($offset < $totalSize) {
                 $chunk = fread($fileHandle, $chunkSize);
-                if ($chunk === false) {
+                if ($chunk === false || $chunk === '') {
                     throw new SocialMediaException("Failed to read chunk from video file.");
                 }
                 

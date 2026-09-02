@@ -15,6 +15,8 @@ class SafeMediaFetcherTest extends TestCase
         foreach ($files as $file) {
             @unlink($file);
         }
+        
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
         parent::tearDown();
     }
 
@@ -294,4 +296,49 @@ class SafeMediaFetcherTest extends TestCase
             putenv('HTTPS_PROXY');
         }
     }
+
+    public function test_it_allows_private_ipv4_when_ssrf_protection_is_disabled()
+    {
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.enforce_ssrf_protection'] = false;
+
+        $this->expectException(SocialMediaException::class);
+        
+        try {
+            SafeMediaFetcher::fetch('http://10.255.255.255/test.mp4', null); // Use an unroutable IP
+        } catch (SocialMediaException $e) {
+            $this->assertStringNotContainsString('Security error: Hostname resolves to a private or reserved IP address', $e->getMessage());
+            $this->assertStringNotContainsString('Access to private or reserved IP', $e->getMessage());
+            throw $e; // Re-throw to satisfy expectException
+        }
+    }
+
+    public function test_it_allows_localhost_when_ssrf_protection_is_disabled()
+    {
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.enforce_ssrf_protection'] = false;
+        
+        $this->expectException(SocialMediaException::class);
+        
+        try {
+            SafeMediaFetcher::fetch('http://127.0.0.1:9999/test.mp4', null);
+        } catch (SocialMediaException $e) {
+            $this->assertStringNotContainsString('Security error: Hostname resolves to a private or reserved IP address', $e->getMessage());
+            $this->assertStringNotContainsString('Access to private or reserved IP', $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function test_it_allows_invalid_mime_type_when_mime_verification_is_disabled()
+    {
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.verify_media_mime_type'] = false;
+        
+        // README.md is a text file (text/plain).
+        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
+        
+        // This should NOT throw any MIME type exceptions because verification is disabled.
+        $tempFile = SafeMediaFetcher::fetch($url);
+        
+        $this->assertFileExists($tempFile);
+        @unlink($tempFile);
+    }
+
 }

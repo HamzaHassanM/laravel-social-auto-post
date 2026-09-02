@@ -212,9 +212,13 @@ class SafeMediaFetcher
      */
     private function resolveAndValidateHost(string $host): string
     {
+        $enforceSsrfProtection = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.enforce_ssrf_protection', true);
+
         // First check if host is already an IP
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            $this->validateIpAddress($host);
+            if ($enforceSsrfProtection) {
+                $this->validateIpAddress($host);
+            }
             return $host;
         }
 

@@ -117,7 +117,8 @@ abstract class SocialMediaService
                     'attempt' => $attempt
                 ]);
                 
-                sleep(pow(2, $attempt - 1));
+                $backoffBase = config('autopost.retry_backoff_base', 2);
+                sleep(pow($backoffBase, $attempt - 1));
             } catch (\Exception $e) {
                 // Non-transient or generic exceptions -> Fail Fast
                 throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);

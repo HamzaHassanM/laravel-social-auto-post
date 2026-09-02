@@ -57,8 +57,15 @@ class SafeMediaFetcher
      */
     public function execute(string $url, int $redirectCount = 0): string
     {
-        if ($redirectCount > self::MAX_REDIRECTS) {
-            throw new SocialMediaException("Too many redirects (max " . self::MAX_REDIRECTS . ").");
+        $maxRedirects = self::MAX_REDIRECTS;
+        try {
+            if (function_exists('config')) {
+                $maxRedirects = config('autopost.max_redirects', $maxRedirects);
+            }
+        } catch (\Throwable $t) {}
+
+        if ($redirectCount > $maxRedirects) {
+            throw new SocialMediaException("Too many redirects (max " . $maxRedirects . ").");
         }
 
         // Validate scheme
@@ -123,18 +130,25 @@ class SafeMediaFetcher
         
         // Timeouts
         $timeout = self::TOTAL_TIMEOUT;
+        $connectTimeout = self::CONNECT_TIMEOUT;
+        $lowSpeedLimit = self::LOW_SPEED_LIMIT;
+        $lowSpeedTime = self::LOW_SPEED_TIME;
+        
         try {
             if (function_exists('config')) {
                 $timeout = config('autopost.timeout', $timeout);
+                $connectTimeout = config('autopost.connect_timeout', $connectTimeout);
+                $lowSpeedLimit = config('autopost.low_speed_limit', $lowSpeedLimit);
+                $lowSpeedTime = config('autopost.low_speed_time', $lowSpeedTime);
             }
         } catch (\Throwable $t) {
             // Fallback for tests
         }
         
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::CONNECT_TIMEOUT);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, self::LOW_SPEED_LIMIT);
-        curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, self::LOW_SPEED_TIME);
+        curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, $lowSpeedLimit);
+        curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, $lowSpeedTime);
         
         // Header callback for redirects
         $redirectUrl = null;

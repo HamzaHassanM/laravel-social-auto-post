@@ -35,8 +35,17 @@ class SafeMediaFetcher
      *
      * @throws SocialMediaException
      */
-    public static function fetch(string $url, int $maxBytes = 52428800): string
+    public static function fetch(string $url, ?int $maxBytes = null): string
     {
+        $maxBytes = $maxBytes ?? 52428800;
+        try {
+            if (function_exists('config')) {
+                $maxBytes = config('autopost.max_media_size', $maxBytes);
+            }
+        } catch (\Throwable $t) {
+            // Fallback for tests where Laravel container isn't fully booted
+        }
+        
         $fetcher = new self($maxBytes);
         return $fetcher->execute($url);
     }
@@ -113,8 +122,17 @@ class SafeMediaFetcher
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         // Timeouts
+        $timeout = self::TOTAL_TIMEOUT;
+        try {
+            if (function_exists('config')) {
+                $timeout = config('autopost.timeout', $timeout);
+            }
+        } catch (\Throwable $t) {
+            // Fallback for tests
+        }
+        
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::CONNECT_TIMEOUT);
-        curl_setopt($ch, CURLOPT_TIMEOUT, self::TOTAL_TIMEOUT);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
         curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, self::LOW_SPEED_LIMIT);
         curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, self::LOW_SPEED_TIME);
         

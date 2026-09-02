@@ -46,6 +46,9 @@ return [
     'enable_logging'    => env('SOCIAL_MEDIA_LOGGING', true),
     'timeout'           => env('SOCIAL_MEDIA_TIMEOUT', 30),
     'retry_attempts'    => env('SOCIAL_MEDIA_RETRY_ATTEMPTS', 3),
+    
+    // Media Configuration
+    'max_media_size'    => env('SOCIAL_MEDIA_MAX_MEDIA_SIZE', 50 * 1024 * 1024), // 50MB default
 ];
 
 

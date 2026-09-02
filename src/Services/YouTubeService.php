@@ -160,16 +160,24 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
             ];
 
             // Step 2: Upload video file
-            $videoContent = file_get_contents($video_url);
-            if ($videoContent === false) {
-                throw new SocialMediaException('Failed to download video from URL: ' . $video_url);
-            }
+            $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url);
 
-            $uploadUrl = $this->buildApiUrl('videos');
-            $response = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
-            
-            Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
-            return $response;
+            try {
+                $videoContent = file_get_contents($tempFile);
+                if ($videoContent === false) {
+                    throw new SocialMediaException('Failed to read downloaded video from temp file');
+                }
+
+                $uploadUrl = $this->buildApiUrl('videos');
+                $response = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
+                
+                Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
+                return $response;
+            } finally {
+                if (file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
         } catch (\Exception $e) {
             Log::error('Failed to share video to YouTube', ['error' => $e->getMessage()]);
             throw new SocialMediaException('Failed to share video to YouTube: ' . $e->getMessage());

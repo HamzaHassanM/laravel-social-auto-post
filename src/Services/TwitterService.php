@@ -260,26 +260,35 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     private function uploadMedia(string $mediaUrl, string $type): string
     {
-        // Download media content
-        $mediaContent = file_get_contents($mediaUrl);
-        if ($mediaContent === false) {
-            throw new SocialMediaException('Failed to download media from URL: ' . $mediaUrl);
-        }
-
-        // Upload to Twitter
-        $url = 'https://upload.twitter.com/1.1/media/upload.json';
-        $params = [
-            'media' => base64_encode($mediaContent),
-            'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image'
-        ];
-
-        $response = $this->sendRequest($url, 'post', $params);
+        // SafeMediaFetcher handles SSRF and OOM limits
+        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($mediaUrl);
         
-        if (!isset($response['media_id_string'])) {
-            throw new SocialMediaException('Failed to upload media to Twitter');
-        }
+        try {
+            // Read the safely limited file into memory for Twitter API
+            $mediaContent = file_get_contents($tempFile);
+            if ($mediaContent === false) {
+                throw new SocialMediaException('Failed to read downloaded media from temp file');
+            }
 
-        return $response['media_id_string'];
+            // Upload to Twitter
+            $url = 'https://upload.twitter.com/1.1/media/upload.json';
+            $params = [
+                'media' => base64_encode($mediaContent),
+                'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image'
+            ];
+
+            $response = $this->sendRequest($url, 'post', $params);
+            
+            if (!isset($response['media_id_string'])) {
+                throw new SocialMediaException('Failed to upload media to Twitter');
+            }
+
+            return $response['media_id_string'];
+        } finally {
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        }
     }
 
     /**

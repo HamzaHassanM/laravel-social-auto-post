@@ -141,58 +141,70 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
         // Step 1: Check if the video URL is remote and download the file if necessary
         $video_path = $this->downloadIfRemote($video_url);
 
-        if (!file_exists($video_path)) {
-            return ['error' => 'Failed to download video or file does not exist.'];
-        }
-
-        // Step 2: Get the size of the video file
-        $fileSize = filesize($video_path);
-
-        // Step 3: Start the upload session
-        $startUrl = $this->buildApiUrl('videos');
-        $params = $this->buildParams([
-            'upload_phase' => 'start',
-            'file_size'    => $fileSize, // Total size of the video file
-        ]);
-
-        $response = $this->sendRequest($startUrl, 'post', $params);
-        $uploadSessionId = $response['upload_session_id'] ?? null;
-
-        if (!$uploadSessionId) {
-            return ['error' => 'Failed to start video upload session.'];
-        }
-
-        // Step 4: Upload the video in chunks (if required)
-        $startOffset = $response['start_offset'] ?? 0;
-        $endOffset = $response['end_offset'] ?? $fileSize;
-
-        while ($startOffset < $endOffset) {
-            $chunkPath = $this->saveVideoChunk($video_path, $startOffset, $endOffset);
-
-            // Ensure the chunk was saved successfully
-            if (!file_exists($chunkPath)) {
-                return ['error' => 'Failed to save video chunk.'];
+        try {
+            if (!file_exists($video_path)) {
+                return ['error' => 'Failed to download video or file does not exist.'];
             }
 
-            // Transfer phase - upload the chunk
+            // Step 2: Get the size of the video file
+            $fileSize = filesize($video_path);
+
+            // Step 3: Start the upload session
+            $startUrl = $this->buildApiUrl('videos');
             $params = $this->buildParams([
-                'upload_phase'      => 'transfer',
-                'upload_session_id' => $uploadSessionId,
-                'start_offset'      => $startOffset,
-                'video_file_chunk'  => new \CURLFile($chunkPath) // Pass the chunk as a CURLFile
+                'upload_phase' => 'start',
+                'file_size'    => $fileSize, // Total size of the video file
             ]);
 
-            $transferResponse = $this->sendRequest($startUrl, 'post', $params);
-            $startOffset = $transferResponse['start_offset'] ?? $endOffset;
-            $endOffset = $transferResponse['end_offset'] ?? $fileSize;
-        }
+            $response = $this->sendRequest($startUrl, 'post', $params);
+            $uploadSessionId = $response['upload_session_id'] ?? null;
 
-        // Step 5: Complete the video upload
-        return $this->completeVideoUpload($uploadSessionId, $caption);
+            if (!$uploadSessionId) {
+                return ['error' => 'Failed to start video upload session.'];
+            }
+
+            // Step 4: Upload the video in chunks (if required)
+            $startOffset = $response['start_offset'] ?? 0;
+            $endOffset = $response['end_offset'] ?? $fileSize;
+
+            while ($startOffset < $endOffset) {
+                $chunkPath = $this->saveVideoChunk($video_path, $startOffset, $endOffset);
+
+                // Ensure the chunk was saved successfully
+                if (!file_exists($chunkPath)) {
+                    return ['error' => 'Failed to save video chunk.'];
+                }
+
+                // Transfer phase - upload the chunk
+                $params = $this->buildParams([
+                    'upload_phase'      => 'transfer',
+                    'upload_session_id' => $uploadSessionId,
+                    'start_offset'      => $startOffset,
+                    'video_file_chunk'  => new \CURLFile($chunkPath) // Pass the chunk as a CURLFile
+                ]);
+
+                $transferResponse = $this->sendRequest($startUrl, 'post', $params);
+                $startOffset = $transferResponse['start_offset'] ?? $endOffset;
+                $endOffset = $transferResponse['end_offset'] ?? $fileSize;
+                
+                // Clean up chunk file
+                if (file_exists($chunkPath)) {
+                    @unlink($chunkPath);
+                }
+            }
+
+            // Step 5: Complete the video upload
+            return $this->completeVideoUpload($uploadSessionId, $caption);
+        } finally {
+            if ($video_path !== $video_url && file_exists($video_path)) {
+                @unlink($video_path);
+            }
+        }
     }
 
     /**
      * Helper to download the video file if it's a remote URL.
+     * Note: If a temp file is returned, it is the caller's responsibility to clean it up.
      *
      * @param string $video_url The remote URL or local file path of the video.
      *
@@ -201,10 +213,8 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
     private function downloadIfRemote(string $video_url): string {
         // Check if the URL is a remote URL
         if (filter_var($video_url, FILTER_VALIDATE_URL)) {
-            // Download the remote file and save it locally
-            $tempPath = sys_get_temp_dir() . '/' . basename($video_url);
-            file_put_contents($tempPath, fopen($video_url, 'r'));
-            return $tempPath; // Return the path to the downloaded file
+            // Download the remote file securely using SafeMediaFetcher
+            return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url);
         }
 
         // If it's already a local file, just return the same path

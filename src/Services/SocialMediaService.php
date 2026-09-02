@@ -20,10 +20,11 @@ abstract class SocialMediaService
      */
     protected function sendRequest(string $url, string $method = 'post', array $params = [], array $headers = []): array
     {
-        $maxRetries = config('autopost.retry_attempts', 3);
+        // Total HTTP attempts to make (including the first attempt)
+        $maxAttempts = config('autopost.retry_attempts', 3);
         $timeout = config('autopost.timeout', 30);
         
-        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
                 $response = Http::timeout($timeout)
                     ->withHeaders($headers)
@@ -31,27 +32,50 @@ abstract class SocialMediaService
 
                 if (!$response->successful()) {
                     $errorMessage = $this->extractErrorMessage($response);
+                    $status = $response->status();
+
+                    // 429 Too Many Requests -> RateLimitException (No retry loop)
+                    if ($status === 429) {
+                        $retryAfter = $response->header('Retry-After');
+                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RateLimitException(
+                            "Rate limit exceeded: {$errorMessage}",
+                            $retryAfter
+                        );
+                    }
+
+                    // 4xx Client Errors (except 429) -> Fail Fast (No retry loop)
+                    if ($status >= 400 && $status < 500) {
+                        throw new SocialMediaException("API request failed (HTTP {$status}): {$errorMessage}");
+                    }
                     
-                    if ($attempt === $maxRetries) {
+                    // 5xx Server Errors -> Retryable
+                    if ($attempt === $maxAttempts) {
                         Log::error('Social media API request failed after all retries', [
                             'url' => $url,
                             'method' => $method,
-                            'status' => $response->status(),
+                            'status' => $status,
                             'error' => $errorMessage,
                             'attempts' => $attempt
                         ]);
                         
-                        throw new SocialMediaException("API request failed: {$errorMessage}");
+                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
+                            "API request failed (HTTP {$status}) after {$attempt} attempts: {$errorMessage}",
+                            0,
+                            null,
+                            null,
+                            $status,
+                            $attempt
+                        );
                     }
                     
-                    Log::warning('Social media API request failed, retrying', [
+                    Log::warning('Social media API request failed with 5xx, retrying', [
                         'url' => $url,
-                        'status' => $response->status(),
+                        'status' => $status,
                         'error' => $errorMessage,
                         'attempt' => $attempt
                     ]);
                     
-                    // Wait before retry (exponential backoff)
+                    // Bounded backoff for 5xx only
                     sleep(pow(2, $attempt - 1));
                     continue;
                 }
@@ -67,26 +91,32 @@ abstract class SocialMediaService
                 
                 return $data;
                 
-            } catch (\Exception $e) {
-                if ($attempt === $maxRetries) {
-                    Log::error('Social media API request failed with exception', [
-                        'url' => $url,
-                        'method' => $method,
-                        'error' => $e->getMessage(),
-                        'attempts' => $attempt
-                    ]);
-                    
-                    throw new SocialMediaException("Request failed: " . $e->getMessage());
+            } catch (\HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException $e) {
+                // Let our specific exceptions (RateLimit, Retryable, or 4xx Fail-fast) bubble up
+                throw $e;
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                // Transient network errors
+                if ($attempt === $maxAttempts) {
+                    throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
+                        "Network/Connection error after {$attempt} attempts: " . $e->getMessage(),
+                        0,
+                        $e,
+                        null,
+                        null,
+                        $attempt
+                    );
                 }
                 
-                Log::warning('Social media API request failed with exception, retrying', [
+                Log::warning('Social media API connection failed, retrying', [
                     'url' => $url,
                     'error' => $e->getMessage(),
                     'attempt' => $attempt
                 ]);
                 
-                // Wait before retry
                 sleep(pow(2, $attempt - 1));
+            } catch (\Exception $e) {
+                // Non-transient or generic exceptions -> Fail Fast
+                throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);
             }
         }
         

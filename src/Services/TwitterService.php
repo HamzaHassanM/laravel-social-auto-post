@@ -264,7 +264,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
         // Local paths are used in tests and allow callers that have already
         // validated / downloaded the file themselves.
         if (filter_var($mediaUrl, FILTER_VALIDATE_URL)) {
-            $tempFile = $this->downloadFile($mediaUrl);
+            $tempFile = $this->downloadMediaToTempFile($mediaUrl);
             $isTemp   = true;
         } else {
             $tempFile = $mediaUrl;

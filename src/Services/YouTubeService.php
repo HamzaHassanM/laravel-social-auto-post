@@ -161,9 +161,9 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
 
             // Step 2: Upload video — accepts a remote URL (downloaded securely via
             // SafeMediaFetcher) or a local file path. Local paths bypass the fetcher
-            // and are used in tests / when the caller has already validated the file.
+            // Use the new secure fetcher, falling back to local file if it's already a path.
             if (filter_var($video_url, FILTER_VALIDATE_URL)) {
-                $tempFile = $this->downloadFile($video_url);
+                $tempFile = $this->downloadMediaToTempFile($video_url);
                 $isTemp   = true;
             } else {
                 $tempFile = $video_url;

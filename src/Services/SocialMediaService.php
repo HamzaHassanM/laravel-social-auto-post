@@ -194,11 +194,35 @@ abstract class SocialMediaService
      * @return string The local path to the downloaded file.
      * @throws SocialMediaException
      */
-    protected function downloadFile(string $url): string
+    protected function downloadMediaToTempFile(string $url): string
     {
         // SafeMediaFetcher handles URL validation, SSRF, DNS Rebinding,
         // streaming limits, timeouts, and private IP blocking.
         return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($url);
+    }
+
+    /**
+     * Download file from URL with error handling.
+     *
+     * @deprecated Use downloadMediaToTempFile() instead to avoid high memory consumption.
+     * @param string $url The file URL.
+     * @return string The downloaded file content.
+     * @throws SocialMediaException
+     */
+    protected function downloadFile(string $url): string
+    {
+        $tempPath = $this->downloadMediaToTempFile($url);
+        $content = file_get_contents($tempPath);
+        
+        if (file_exists($tempPath)) {
+            @unlink($tempPath);
+        }
+        
+        if ($content === false) {
+            throw new SocialMediaException('Failed to download file from URL: ' . $url);
+        }
+        
+        return $content;
     }
 
     /**

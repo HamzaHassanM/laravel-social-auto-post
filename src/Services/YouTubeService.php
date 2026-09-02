@@ -98,7 +98,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function share(string $caption, string $url): array
     {
-        $this->validateInput($caption, $url);
+        $this->validateTextUrl($caption, $url);
         
         try {
             // YouTube doesn't support direct text posts
@@ -121,7 +121,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateTextUrl($caption, $image_url);
         
         try {
             // YouTube doesn't support direct image posts
@@ -143,7 +143,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
         try {
             // Step 1: Upload video metadata
@@ -227,7 +227,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      *
      * @param string $uploadUrl The YouTube upload URL.
      * @param array $metadata The video metadata.
-     * @param string $videoContent The video content.
+     * @param string $videoFilePath The path to the video file to upload.
      * @return array Response from the YouTube API.
      * @throws SocialMediaException
      */
@@ -380,14 +380,25 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
         return array_slice($tags, 0, 15);
     }
 
+    private function validateTextUrl(string $caption, string $url): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            throw new SocialMediaException('Invalid URL provided.');
+        }
+    }
+
     /**
-     * Validate input parameters.
+     * Validate the input for media uploads (accepts URL or local path).
      *
-     * @param string $caption The caption text.
-     * @param string $url The URL.
+     * @param string $caption The caption.
+     * @param string $urlOrPath The media URL or file path.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $urlOrPath): void
+    private function validateMediaInput(string $caption, string $urlOrPath): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');

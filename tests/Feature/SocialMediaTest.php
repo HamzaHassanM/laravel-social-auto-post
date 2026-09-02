@@ -180,6 +180,23 @@ class SocialMediaTest extends TestCase
         $this->assertEquals('456', $result['data']['id']);
     }
 
+    public function testTwitterImageSharingRemoteUrl()
+    {
+        // This tests that SafeMediaFetcher correctly downloads a remote file 
+        // before passing it to the service's upload mechanism (which is mocked).
+        Http::fake([
+            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456_remote']], 200),
+            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123_remote'], 200),
+        ]);
+
+        // A public URL that returns a small valid JPEG
+        $url = 'https://httpbin.org/image/jpeg';
+        $result = Twitter::shareImage('Test tweet with remote image', $url);
+
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals('456_remote', $result['data']['id']);
+    }
+
     public function testTwitterTimeline()
     {
         Http::fake([
@@ -270,6 +287,30 @@ class SocialMediaTest extends TestCase
         $this->assertEquals('tiktok123', $result['data']['publish_id']);
     }
 
+    public function testTikTokVideoSharingRemoteUrl()
+    {
+        Http::fake([
+            'https://open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
+                'data' => [
+                    'publish_id' => 'tiktok123_remote',
+                    'upload_url' => 'https://upload.tiktok.com/upload'
+                ],
+                'error' => ['code' => 'ok']
+            ], 200),
+            'https://upload.tiktok.com/upload' => Http::response([], 200)
+        ]);
+
+        // Use our own raw GitHub fixture as a reliable remote video URL.
+        // It triggers SafeMediaFetcher, downloads the video, validates it,
+        // and then passes it to the mocked upload flow.
+        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
+        
+        $result = TikTok::shareVideo('Test TikTok remote video', $url);
+
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals('tiktok123_remote', $result['data']['publish_id']);
+    }
+
     public function testYouTubeVideoSharing()
     {
         Http::fake([
@@ -282,6 +323,21 @@ class SocialMediaTest extends TestCase
 
         $this->assertArrayHasKey('id', $result);
         $this->assertEquals('youtube123', $result['id']);
+    }
+
+    public function testYouTubeVideoSharingRemoteUrl()
+    {
+        Http::fake([
+            'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123_remote'], 200),
+        ]);
+
+        // Use our own raw GitHub fixture as a reliable remote video URL.
+        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
+        
+        $result = YouTube::shareVideo('Test YouTube remote video', $url);
+
+        $this->assertArrayHasKey('id', $result);
+        $this->assertEquals('youtube123_remote', $result['id']);
     }
 
     public function testYouTubeCommunityPost()

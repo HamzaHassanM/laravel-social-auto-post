@@ -272,6 +272,10 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
         }
 
         try {
+            if (filesize($tempFile) > 50 * 1024 * 1024) {
+                throw new SocialMediaException("File size exceeds the 50 MB limit for Twitter upload.");
+            }
+
             // Read the safely limited file into memory for Twitter API
             $mediaContent = file_get_contents($tempFile);
             if ($mediaContent === false) {

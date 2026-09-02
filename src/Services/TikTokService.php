@@ -110,7 +110,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateTextUrl($caption, $image_url);
         
         try {
             $url = $this->buildApiUrl('post/publish/content/init/');
@@ -148,7 +148,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
         $video_path = filter_var($video_url, FILTER_VALIDATE_URL)
             ? \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url)
@@ -344,14 +344,25 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
         }
     }
 
+    private function validateTextUrl(string $caption, string $url): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            throw new SocialMediaException('Invalid URL provided.');
+        }
+    }
+
     /**
-     * Validate input parameters.
+     * Validate the input for media uploads (accepts URL or local path).
      *
-     * @param string $caption The caption text.
-     * @param string $url The URL.
+     * @param string $caption The caption.
+     * @param string $urlOrPath The media URL or file path.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $urlOrPath): void
+    private function validateMediaInput(string $caption, string $urlOrPath): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');

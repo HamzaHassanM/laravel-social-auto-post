@@ -104,6 +104,11 @@ class SafeMediaFetcher
         // CURLOPT_RESOLVE format: array("HOST:PORT:IP")
         curl_setopt($ch, CURLOPT_RESOLVE, ["{$host}:{$port}:{$resolvedIp}"]);
         
+        // Disable proxy by explicitly setting CURLOPT_PROXY to an empty string.
+        // This ensures the request uses the validated destination IP directly and
+        // ignores any ambient proxy environment variables (e.g. HTTP_PROXY).
+        curl_setopt($ch, CURLOPT_PROXY, '');
+        
         // Ensure a fresh connection is made using the resolved IP
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         

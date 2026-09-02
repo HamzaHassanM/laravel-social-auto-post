@@ -268,5 +268,30 @@ class SafeMediaFetcherTest extends TestCase
             }
         }
     }
-}
+    public function test_ignores_ambient_proxy_environment_variables(): void
+    {
+        // Set a dummy HTTP_PROXY that points to an invalid/non-existent server
+        putenv('HTTP_PROXY=http://127.0.0.1:9999');
+        putenv('HTTPS_PROXY=http://127.0.0.1:9999');
 
+        try {
+            $url = 'https://httpbin.org/image/jpeg';
+            $fetcher = new SafeMediaFetcher(1024 * 1024, []); // disable MIME checking for simplicity
+
+            // If the proxy is used, this will fail with a connection refused error or timeout.
+            // If CURLOPT_PROXY => '' works, it will bypass the proxy and succeed.
+            $tempFile = $fetcher->execute($url);
+            
+            $this->assertFileExists($tempFile);
+            $this->assertGreaterThan(0, filesize($tempFile));
+
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        } finally {
+            // Clean up environment variables
+            putenv('HTTP_PROXY');
+            putenv('HTTPS_PROXY');
+        }
+    }
+}

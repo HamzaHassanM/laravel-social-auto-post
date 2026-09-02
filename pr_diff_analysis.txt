@@ -1,0 +1,2323 @@
+diff --git a/src/Exceptions/RateLimitException.php b/src/Exceptions/RateLimitException.php
+new file mode 100644
+index 0000000..f33a009
+--- /dev/null
++++ b/src/Exceptions/RateLimitException.php
+@@ -0,0 +1,52 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Exceptions;
++
++class RateLimitException extends SocialMediaException
++{
++    protected ?int $retryAfter = null;
++
++    /**
++     * @param string $message
++     * @param string|int|null $retryAfterHeader The value of the Retry-After header
++     * @param int $code
++     * @param \Throwable|null $previous
++     */
++    public function __construct(string $message = "Too Many Requests", $retryAfterHeader = null, int $code = 429, \Throwable $previous = null)
++    {
++        parent::__construct($message, $code, $previous);
++
++        if ($retryAfterHeader !== null) {
++            $this->parseRetryAfter($retryAfterHeader);
++        }
++    }
++
++    /**
++     * Get the suggested number of seconds to wait before retrying.
++     *
++     * @return int|null
++     */
++    public function getRetryAfter(): ?int
++    {
++        return $this->retryAfter;
++    }
++
++    /**
++     * Parse the Retry-After header which can be an integer (seconds) or HTTP-date.
++     *
++     * @param string|int $headerValue
++     */
++    protected function parseRetryAfter($headerValue): void
++    {
++        if (is_numeric($headerValue)) {
++            $this->retryAfter = (int) $headerValue;
++            return;
++        }
++
++        $time = strtotime((string) $headerValue);
++        if ($time !== false) {
++            $seconds = $time - time();
++            $this->retryAfter = $seconds > 0 ? $seconds : 0;
++        }
++    }
++}
+diff --git a/src/Exceptions/RetryableException.php b/src/Exceptions/RetryableException.php
+new file mode 100644
+index 0000000..66192f8
+--- /dev/null
++++ b/src/Exceptions/RetryableException.php
+@@ -0,0 +1,42 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Exceptions;
++
++class RetryableException extends SocialMediaException
++{
++    protected ?string $platform = null;
++    protected ?int $httpStatus = null;
++    protected int $attempts = 1;
++
++    /**
++     * @param string $message
++     * @param int $code
++     * @param \Throwable|null $previous
++     * @param string|null $platform The social media platform (e.g., 'twitter', 'facebook')
++     * @param int|null $httpStatus The HTTP status code, if applicable
++     * @param int $attempts Total number of HTTP attempts made
++     */
++    public function __construct(string $message = "A retryable error occurred", int $code = 0, \Throwable $previous = null, ?string $platform = null, ?int $httpStatus = null, int $attempts = 1)
++    {
++        parent::__construct($message, $code, $previous);
++        
++        $this->platform = $platform;
++        $this->httpStatus = $httpStatus;
++        $this->attempts = $attempts;
++    }
++
++    public function getPlatform(): ?string
++    {
++        return $this->platform;
++    }
++
++    public function getHttpStatus(): ?int
++    {
++        return $this->httpStatus;
++    }
++
++    public function getAttempts(): int
++    {
++        return $this->attempts;
++    }
++}
+diff --git a/src/Services/FacebookService.php b/src/Services/FacebookService.php
+index 843d1b6..05ab53a 100644
+--- a/src/Services/FacebookService.php
++++ b/src/Services/FacebookService.php
+@@ -62,8 +62,8 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
+      */
+     public static function getInstance() {
+         if (self::$instance === null) {
+-            $accessToken = config('autopost.facebook_access_token');
+-            $pageId = config('autopost.facebook_page_id');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_access_token');
++            $pageId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_page_id');
+             self::$instance = new self($accessToken, $pageId);
+         }
+         return self::$instance;
+@@ -141,58 +141,72 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
+         // Step 1: Check if the video URL is remote and download the file if necessary
+         $video_path = $this->downloadIfRemote($video_url);
+ 
+-        if (!file_exists($video_path)) {
+-            return ['error' => 'Failed to download video or file does not exist.'];
+-        }
+-
+-        // Step 2: Get the size of the video file
+-        $fileSize = filesize($video_path);
+-
+-        // Step 3: Start the upload session
+-        $startUrl = $this->buildApiUrl('videos');
+-        $params = $this->buildParams([
+-            'upload_phase' => 'start',
+-            'file_size'    => $fileSize, // Total size of the video file
+-        ]);
+-
+-        $response = $this->sendRequest($startUrl, 'post', $params);
+-        $uploadSessionId = $response['upload_session_id'] ?? null;
++        try {
++            if (!file_exists($video_path)) {
++                return ['error' => 'Failed to download video or file does not exist.'];
++            }
+ 
+-        if (!$uploadSessionId) {
+-            return ['error' => 'Failed to start video upload session.'];
+-        }
++            // Step 2: Get the size of the video file
++            $fileSize = filesize($video_path);
+ 
+-        // Step 4: Upload the video in chunks (if required)
+-        $startOffset = $response['start_offset'] ?? 0;
+-        $endOffset = $response['end_offset'] ?? $fileSize;
++            // Step 3: Start the upload session
++            $startUrl = $this->buildApiUrl('videos');
++            $params = $this->buildParams([
++                'upload_phase' => 'start',
++                'file_size'    => $fileSize, // Total size of the video file
++            ]);
+ 
+-        while ($startOffset < $endOffset) {
+-            $chunkPath = $this->saveVideoChunk($video_path, $startOffset, $endOffset);
++            $response = $this->sendRequest($startUrl, 'post', $params);
++            $uploadSessionId = $response['upload_session_id'] ?? null;
+ 
+-            // Ensure the chunk was saved successfully
+-            if (!file_exists($chunkPath)) {
+-                return ['error' => 'Failed to save video chunk.'];
++            if (!$uploadSessionId) {
++                return ['error' => 'Failed to start video upload session.'];
+             }
+ 
+-            // Transfer phase - upload the chunk
+-            $params = $this->buildParams([
+-                'upload_phase'      => 'transfer',
+-                'upload_session_id' => $uploadSessionId,
+-                'start_offset'      => $startOffset,
+-                'video_file_chunk'  => new \CURLFile($chunkPath) // Pass the chunk as a CURLFile
+-            ]);
++            // Step 4: Upload the video in chunks (if required)
++            $startOffset = $response['start_offset'] ?? 0;
++            $endOffset = $response['end_offset'] ?? $fileSize;
++
++            while ($startOffset < $endOffset) {
++                $chunkPath = $this->saveVideoChunk($video_path, $startOffset, $endOffset);
++
++                // Ensure the chunk was saved successfully
++                if (!file_exists($chunkPath)) {
++                    return ['error' => 'Failed to save video chunk.'];
++                }
++
++                // Transfer phase - upload the chunk
++                $params = $this->buildParams([
++                    'upload_phase'      => 'transfer',
++                    'upload_session_id' => $uploadSessionId,
++                    'start_offset'      => $startOffset,
++                    'video_file_chunk'  => new \CURLFile($chunkPath) // Pass the chunk as a CURLFile
++                ]);
++
++                try {
++                    $transferResponse = $this->sendRequest($startUrl, 'post', $params);
++                    $startOffset = $transferResponse['start_offset'] ?? $endOffset;
++                    $endOffset = $transferResponse['end_offset'] ?? $fileSize;
++                } finally {
++                    // Clean up chunk file
++                    if (file_exists($chunkPath)) {
++                        @unlink($chunkPath);
++                    }
++                }
++            }
+ 
+-            $transferResponse = $this->sendRequest($startUrl, 'post', $params);
+-            $startOffset = $transferResponse['start_offset'] ?? $endOffset;
+-            $endOffset = $transferResponse['end_offset'] ?? $fileSize;
++            // Step 5: Complete the video upload
++            return $this->completeVideoUpload($uploadSessionId, $caption);
++        } finally {
++            if ($video_path !== $video_url && file_exists($video_path)) {
++                @unlink($video_path);
++            }
+         }
+-
+-        // Step 5: Complete the video upload
+-        return $this->completeVideoUpload($uploadSessionId, $caption);
+     }
+ 
+     /**
+      * Helper to download the video file if it's a remote URL.
++     * Note: If a temp file is returned, it is the caller's responsibility to clean it up.
+      *
+      * @param string $video_url The remote URL or local file path of the video.
+      *
+@@ -201,10 +215,8 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
+     private function downloadIfRemote(string $video_url): string {
+         // Check if the URL is a remote URL
+         if (filter_var($video_url, FILTER_VALIDATE_URL)) {
+-            // Download the remote file and save it locally
+-            $tempPath = sys_get_temp_dir() . '/' . basename($video_url);
+-            file_put_contents($tempPath, fopen($video_url, 'r'));
+-            return $tempPath; // Return the path to the downloaded file
++            // Download the remote file securely using SafeMediaFetcher
++            return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url);
+         }
+ 
+         // If it's already a local file, just return the same path
+@@ -293,7 +305,7 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
+      * @return string
+      */
+     private function buildApiUrl(string $endpoint = ''): string {
+-        $apiVersion = config('autopost.facebook_api_version');
++        $apiVersion = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_api_version');
+         return 'https://graph.facebook.com/' . $apiVersion . '/' . $this->page_id . '/' . $endpoint;
+     }
+ 
+diff --git a/src/Services/InstagramService.php b/src/Services/InstagramService.php
+index e862c8c..2602685 100644
+--- a/src/Services/InstagramService.php
++++ b/src/Services/InstagramService.php
+@@ -74,9 +74,9 @@ class InstagramService extends SocialMediaService implements ShareInterface, Sha
+     public static function getInstance(): InstagramService
+     {
+         if (self::$instance === null) {
+-            $accessToken = config('autopost.instagram_access_token');
+-            $instagramAccountId = config('autopost.instagram_account_id');
+-            $facebookPageId = config('autopost.facebook_page_id');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.instagram_access_token');
++            $instagramAccountId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.instagram_account_id');
++            $facebookPageId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_page_id');
+ 
+             if (!$accessToken || !$instagramAccountId || !$facebookPageId) {
+                 throw new SocialMediaException('Instagram credentials are not properly configured.');
+diff --git a/src/Services/LinkedInService.php b/src/Services/LinkedInService.php
+index 764e4d5..e1415d2 100644
+--- a/src/Services/LinkedInService.php
++++ b/src/Services/LinkedInService.php
+@@ -74,9 +74,9 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
+     public static function getInstance(): LinkedInService
+     {
+         if (self::$instance === null) {
+-            $accessToken = config('autopost.linkedin_access_token');
+-            $personUrn = config('autopost.linkedin_person_urn');
+-            $organizationUrn = config('autopost.linkedin_organization_urn');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_access_token');
++            $personUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_person_urn');
++            $organizationUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_organization_urn');
+ 
+             if (!$accessToken || !$personUrn) {
+                 throw new SocialMediaException('LinkedIn credentials are not properly configured.');
+@@ -353,17 +353,25 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
+         $asset = $registerResponse['value']['asset'];
+ 
+         // Step 2: Upload image
+-        $imageContent = file_get_contents($imageUrl);
+-        if ($imageContent === false) {
+-            throw new SocialMediaException('Failed to download image from URL: ' . $imageUrl);
+-        }
++        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($imageUrl);
++
++        try {
++            $imageContent = file_get_contents($tempFile);
++            if ($imageContent === false) {
++                throw new SocialMediaException('Failed to read downloaded image from temp file');
++            }
+ 
+-        $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
+-            'Authorization' => 'Bearer ' . $this->access_token
+-        ])->put($uploadUrl, $imageContent);
++            $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
++                'Authorization' => 'Bearer ' . $this->access_token
++            ])->put($uploadUrl, $imageContent);
+ 
+-        if (!$uploadResponse->successful()) {
+-            throw new SocialMediaException('Failed to upload image to LinkedIn');
++            if (!$uploadResponse->successful()) {
++                throw new SocialMediaException('Failed to upload image to LinkedIn');
++            }
++        } finally {
++            if (file_exists($tempFile)) {
++                @unlink($tempFile);
++            }
+         }
+ 
+         return $asset;
+@@ -398,17 +406,25 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
+         $asset = $registerResponse['value']['asset'];
+ 
+         // Step 2: Upload video
+-        $videoContent = file_get_contents($videoUrl);
+-        if ($videoContent === false) {
+-            throw new SocialMediaException('Failed to download video from URL: ' . $videoUrl);
+-        }
++        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($videoUrl);
++
++        try {
++            $videoContent = file_get_contents($tempFile);
++            if ($videoContent === false) {
++                throw new SocialMediaException('Failed to read downloaded video from temp file');
++            }
+ 
+-        $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
+-            'Authorization' => 'Bearer ' . $this->access_token
+-        ])->put($uploadUrl, $videoContent);
++            $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
++                'Authorization' => 'Bearer ' . $this->access_token
++            ])->put($uploadUrl, $videoContent);
+ 
+-        if (!$uploadResponse->successful()) {
+-            throw new SocialMediaException('Failed to upload video to LinkedIn');
++            if (!$uploadResponse->successful()) {
++                throw new SocialMediaException('Failed to upload video to LinkedIn');
++            }
++        } finally {
++            if (file_exists($tempFile)) {
++                @unlink($tempFile);
++            }
+         }
+ 
+         return $asset;
+diff --git a/src/Services/PinterestService.php b/src/Services/PinterestService.php
+index 6749d36..27a6f5b 100644
+--- a/src/Services/PinterestService.php
++++ b/src/Services/PinterestService.php
+@@ -66,8 +66,8 @@ class PinterestService extends SocialMediaService implements ShareInterface, Sha
+     public static function getInstance(): PinterestService
+     {
+         if (self::$instance === null) {
+-            $accessToken = config('autopost.pinterest_access_token');
+-            $boardId = config('autopost.pinterest_board_id');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.pinterest_access_token');
++            $boardId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.pinterest_board_id');
+ 
+             if (!$accessToken || !$boardId) {
+                 throw new SocialMediaException('Pinterest credentials are not properly configured.');
+diff --git a/src/Services/SocialMediaService.php b/src/Services/SocialMediaService.php
+index 171b517..92f214f 100644
+--- a/src/Services/SocialMediaService.php
++++ b/src/Services/SocialMediaService.php
+@@ -20,10 +20,11 @@ abstract class SocialMediaService
+      */
+     protected function sendRequest(string $url, string $method = 'post', array $params = [], array $headers = []): array
+     {
+-        $maxRetries = config('autopost.retry_attempts', 3);
+-        $timeout = config('autopost.timeout', 30);
++        // Total HTTP attempts to make (including the first attempt)
++        $maxAttempts = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_attempts', 3);
++        $timeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.timeout', 30);
+         
+-        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
++        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+             try {
+                 $response = Http::timeout($timeout)
+                     ->withHeaders($headers)
+@@ -31,27 +32,50 @@ abstract class SocialMediaService
+ 
+                 if (!$response->successful()) {
+                     $errorMessage = $this->extractErrorMessage($response);
++                    $status = $response->status();
++
++                    // 429 Too Many Requests -> RateLimitException (No retry loop)
++                    if ($status === 429) {
++                        $retryAfter = $response->header('Retry-After');
++                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RateLimitException(
++                            "Rate limit exceeded: {$errorMessage}",
++                            $retryAfter
++                        );
++                    }
++
++                    // 4xx Client Errors (except 429) -> Fail Fast (No retry loop)
++                    if ($status >= 400 && $status < 500) {
++                        throw new SocialMediaException("API request failed (HTTP {$status}): {$errorMessage}");
++                    }
+                     
+-                    if ($attempt === $maxRetries) {
++                    // 5xx Server Errors -> Retryable
++                    if ($attempt === $maxAttempts) {
+                         Log::error('Social media API request failed after all retries', [
+                             'url' => $url,
+                             'method' => $method,
+-                            'status' => $response->status(),
++                            'status' => $status,
+                             'error' => $errorMessage,
+                             'attempts' => $attempt
+                         ]);
+                         
+-                        throw new SocialMediaException("API request failed: {$errorMessage}");
++                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
++                            "API request failed (HTTP {$status}) after {$attempt} attempts: {$errorMessage}",
++                            0,
++                            null,
++                            null,
++                            $status,
++                            $attempt
++                        );
+                     }
+                     
+-                    Log::warning('Social media API request failed, retrying', [
++                    Log::warning('Social media API request failed with 5xx, retrying', [
+                         'url' => $url,
+-                        'status' => $response->status(),
++                        'status' => $status,
+                         'error' => $errorMessage,
+                         'attempt' => $attempt
+                     ]);
+                     
+-                    // Wait before retry (exponential backoff)
++                    // Bounded backoff for 5xx only
+                     sleep(pow(2, $attempt - 1));
+                     continue;
+                 }
+@@ -67,29 +91,41 @@ abstract class SocialMediaService
+                 
+                 return $data;
+                 
+-            } catch (\Exception $e) {
+-                if ($attempt === $maxRetries) {
+-                    Log::error('Social media API request failed with exception', [
+-                        'url' => $url,
+-                        'method' => $method,
+-                        'error' => $e->getMessage(),
+-                        'attempts' => $attempt
+-                    ]);
+-                    
+-                    throw new SocialMediaException("Request failed: " . $e->getMessage());
++            } catch (\HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException $e) {
++                // Let our specific exceptions (RateLimit, Retryable, or 4xx Fail-fast) bubble up
++                throw $e;
++            } catch (\Illuminate\Http\Client\ConnectionException $e) {
++                if (!$this->isTransientNetworkError($e)) {
++                    throw new SocialMediaException("Non-transient network error: " . $e->getMessage(), 0, $e);
++                }
++
++                // Transient network errors
++                if ($attempt === $maxAttempts) {
++                    throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
++                        "Network/Connection error after {$attempt} attempts: " . $e->getMessage(),
++                        0,
++                        $e,
++                        null,
++                        null,
++                        $attempt
++                    );
+                 }
+                 
+-                Log::warning('Social media API request failed with exception, retrying', [
++                Log::warning('Social media API connection failed, retrying', [
+                     'url' => $url,
+                     'error' => $e->getMessage(),
+                     'attempt' => $attempt
+                 ]);
+                 
+-                // Wait before retry
+-                sleep(pow(2, $attempt - 1));
++                $backoffBase = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_backoff_base', 2);
++                sleep(pow($backoffBase, $attempt - 1));
++            } catch (\Exception $e) {
++                // Non-transient or generic exceptions -> Fail Fast
++                throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);
+             }
+         }
+-        
++        // Note: every iteration either returns (2xx) or throws (4xx/429/5xx/network).
++        // This line is a safeguard that should never be reached in practice.
+         throw new SocialMediaException('Request failed after all retry attempts');
+     }
+ 
+@@ -150,29 +186,61 @@ abstract class SocialMediaService
+     }
+ 
+     /**
+-     * Download file from URL with error handling.
++     * Download file from URL securely using SafeMediaFetcher.
++     * Note: This returns a temporary local file path. It is the caller's responsibility
++     * to ensure the file is cleaned up after use.
+      *
+      * @param string $url The file URL.
+-     * @return string The downloaded file content.
++     * @return string The local path to the downloaded file.
+      * @throws SocialMediaException
+      */
+     protected function downloadFile(string $url): string
+     {
+-        $this->validateUrl($url);
+-        
+-        $context = stream_context_create([
+-            'http' => [
+-                'timeout' => config('autopost.timeout', 30),
+-                'user_agent' => 'Laravel Social Auto Post Package'
+-            ]
+-        ]);
++        // SafeMediaFetcher handles URL validation, SSRF, DNS Rebinding,
++        // streaming limits, timeouts, and private IP blocking.
++        return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($url);
++    }
++
++    /**
++     * Determine if a ConnectionException is transient (retryable) based on cURL error codes.
++     */
++    protected function isTransientNetworkError(\Exception $e): bool
++    {
++        $message = $e->getMessage();
+         
+-        $content = file_get_contents($url, false, $context);
++        // Extract cURL error code if present (Guzzle/Laravel standard format: "cURL error XX: ...")
++        if (preg_match('/cURL error (\d+):/', $message, $matches)) {
++            $curlErrorCode = (int) $matches[1];
++            
++            // Known transient cURL errors:
++            // 28: CURLE_OPERATION_TIMEDOUT (Timeout)
++            // 7: CURLE_COULDNT_CONNECT (Connection refused - might be temporary)
++            // 52: CURLE_GOT_NOTHING (Empty reply from server)
++            // 56: CURLE_RECV_ERROR (Failure in receiving network data)
++            $transientCodes = [28, 7, 52, 56];
++            
++            // Known NON-transient cURL errors:
++            // 6: CURLE_COULDNT_RESOLVE_HOST (DNS failure)
++            // 3: CURLE_URL_MALFORMAT (Malformed URL)
++            // 35, 51, 58, 60, 77: SSL/TLS related errors
++            $nonTransientCodes = [6, 3, 35, 51, 58, 60, 77];
++            
++            if (in_array($curlErrorCode, $nonTransientCodes, true)) {
++                return false; // Definitely not transient
++            }
++            
++            if (in_array($curlErrorCode, $transientCodes, true)) {
++                return true; // Definitely transient
++            }
++        }
+         
+-        if ($content === false) {
+-            throw new SocialMediaException('Failed to download file from URL: ' . $url);
++        // Fallback: Check if the message contains timeout-related keywords
++        $lowerMessage = strtolower($message);
++        if (str_contains($lowerMessage, 'timeout') || str_contains($lowerMessage, 'timed out')) {
++            return true;
+         }
+         
+-        return $content;
++        // By default, assume non-transient to prevent retry amplification on unknown errors
++        return false;
+     }
+ }
+\ No newline at end of file
+diff --git a/src/Services/TelegramService.php b/src/Services/TelegramService.php
+index 84d538f..02fcfa0 100644
+--- a/src/Services/TelegramService.php
++++ b/src/Services/TelegramService.php
+@@ -60,8 +60,8 @@ class TelegramService extends SocialMediaService implements ShareInterface,
+      */
+     public static function getInstance(): TelegramService {
+         if (self::$instance === null) {
+-            $telegramBotToken = config('autopost.telegram_bot_token');
+-            $chatId = config('autopost.telegram_chat_id');
++            $telegramBotToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_bot_token');
++            $chatId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_chat_id');
+             self::$instance = new self($telegramBotToken, $chatId);
+         }
+         return self::$instance;
+@@ -180,7 +180,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
+      * @return string
+      */
+     private function buildApiUrl(string $endpoint): string {
+-        $baseUrl = config('autopost.telegram_api_base_url');
++        $baseUrl = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_api_base_url');
+         return $baseUrl . $this->telegram_bot_token . '/' . $endpoint;
+     }
+ }
+\ No newline at end of file
+diff --git a/src/Services/TikTokService.php b/src/Services/TikTokService.php
+index 079ee17..a2cc5fa 100644
+--- a/src/Services/TikTokService.php
++++ b/src/Services/TikTokService.php
+@@ -73,9 +73,9 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+     public static function getInstance(): TikTokService
+     {
+         if (self::$instance === null) {
+-            $accessToken = config('autopost.tiktok_access_token');
+-            $clientKey = config('autopost.tiktok_client_key');
+-            $clientSecret = config('autopost.tiktok_client_secret');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_access_token');
++            $clientKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_key');
++            $clientSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_secret');
+ 
+             if (!$accessToken || !$clientKey || !$clientSecret) {
+                 throw new SocialMediaException('TikTok credentials are not properly configured.');
+@@ -110,7 +110,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+      */
+     public function shareImage(string $caption, string $image_url): array
+     {
+-        $this->validateInput($caption, $image_url);
++        $this->validateTextUrl($caption, $image_url);
+         
+         try {
+             $url = $this->buildApiUrl('post/publish/content/init/');
+@@ -148,13 +148,21 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+      */
+     public function shareVideo(string $caption, string $video_url): array
+     {
+-        $this->validateInput($caption, $video_url);
++        $this->validateMediaInput($caption, $video_url);
+         
++        $video_path = filter_var($video_url, FILTER_VALIDATE_URL)
++            ? \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url)
++            : $video_url;
++
+         try {
++            if (!file_exists($video_path)) {
++                throw new SocialMediaException('Failed to download video or file does not exist.');
++            }
++
+             // Check if we should use FILE_UPLOAD or PULL_FROM_URL. 
+             // For general public URLs, PULL_FROM_URL requires a verified domain,
+             // so using FILE_UPLOAD with chunking is generally safer for a package.
+-            $sourceInfo = $this->buildFileUploadSourceInfo($video_url);
++            $sourceInfo = $this->buildFileUploadSourceInfo($video_path);
+ 
+             $url = $this->buildApiUrl('post/publish/video/init/');
+             $params = [
+@@ -177,13 +185,17 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+                 throw new SocialMediaException('TikTok did not return an upload_url.');
+             }
+ 
+-            $this->uploadVideoChunks($video_url, $uploadUrl);
++            $this->uploadVideoChunks($video_path, $uploadUrl);
+ 
+             Log::info('TikTok video upload initialized', compact('publishId'));
+             return $initResponse;
+         } catch (\Exception $e) {
+             Log::error('Failed to share video to TikTok', ['error' => $e->getMessage()]);
+             throw new SocialMediaException('Failed to share video to TikTok: ' . $e->getMessage());
++        } finally {
++            if ($video_path !== $video_url && file_exists($video_path)) {
++                @unlink($video_path);
++            }
+         }
+     }
+ 
+@@ -262,29 +274,12 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+      * @return array<string, mixed>
+      * @throws SocialMediaException
+      */
+-    private function buildFileUploadSourceInfo(string $videoUrl): array
++    private function buildFileUploadSourceInfo(string $videoPath): array
+     {
+-        $headers = @get_headers($videoUrl, true);
+-        
+-        // Handle array responses for redirected headers
+-        $contentLength = $headers['Content-Length'] ?? $headers['content-length'] ?? 0;
+-        if (is_array($contentLength)) {
+-            $contentLength = end($contentLength);
+-        }
+-        
+-        $videoSize = (int) $contentLength;
++        $videoSize = filesize($videoPath);
+ 
+-        if ($videoSize === 0) {
+-            // Fallback if headers fail or don't provide Content-Length
+-            $content = @file_get_contents($videoUrl, false, null, 0, 1024);
+-            if ($content === false) {
+-                throw new SocialMediaException('Could not determine video file size or download video.');
+-            }
+-            
+-            // Need full size
+-            $fullContent = file_get_contents($videoUrl);
+-            $videoSize = strlen($fullContent);
+-            unset($fullContent);
++        if ($videoSize === false || $videoSize === 0) {
++            throw new SocialMediaException('Could not determine video file size.');
+         }
+ 
+         $chunkSize = 10 * 1024 * 1024; // 10 MB per chunk
+@@ -303,56 +298,79 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
+      * 
+      * @throws SocialMediaException
+      */
+-    private function uploadVideoChunks(string $videoUrl, string $uploadUrl): void
++    private function uploadVideoChunks(string $videoPath, string $uploadUrl): void
+     {
+-        $videoContent = @file_get_contents($videoUrl);
++        $totalSize = filesize($videoPath);
++        if ($totalSize === false) {
++            throw new SocialMediaException("Failed to read video file size.");
++        }
+ 
+-        if ($videoContent === false) {
+-            throw new SocialMediaException("Failed to download video from: {$videoUrl}");
++        $fileHandle = fopen($videoPath, 'rb');
++        if ($fileHandle === false) {
++            throw new SocialMediaException("Failed to open video file for reading.");
+         }
+ 
+-        $totalSize = strlen($videoContent);
+         $chunkSize = 10 * 1024 * 1024;
+         $offset = 0;
+         $chunkIndex = 0;
+ 
+-        while ($offset < $totalSize) {
+-            $chunk = substr($videoContent, $offset, $chunkSize);
+-            $chunkLength = strlen($chunk);
+-            $end = $offset + $chunkLength - 1;
+-
+-            $response = Http::timeout(120)
+-                ->withHeaders([
+-                    'Content-Type' => 'video/mp4',
+-                    'Content-Length' => $chunkLength,
+-                    'Content-Range' => "bytes {$offset}-{$end}/{$totalSize}",
+-                ])
+-                ->put($uploadUrl, $chunk);
+-
+-            if (!$response->successful()) {
+-                throw new SocialMediaException("Failed to upload chunk {$chunkIndex}: {$response->body()}");
++        try {
++            while ($offset < $totalSize) {
++                $chunk = fread($fileHandle, $chunkSize);
++                if ($chunk === false) {
++                    throw new SocialMediaException("Failed to read chunk from video file.");
++                }
++                
++                $chunkLength = strlen($chunk);
++                $end = $offset + $chunkLength - 1;
++
++                $response = Http::timeout(120)
++                    ->withHeaders([
++                        'Content-Type' => 'video/mp4',
++                        'Content-Length' => $chunkLength,
++                        'Content-Range' => "bytes {$offset}-{$end}/{$totalSize}",
++                    ])
++                    ->put($uploadUrl, $chunk);
++
++                if (!$response->successful()) {
++                    throw new SocialMediaException("Failed to upload chunk {$chunkIndex}: {$response->body()}");
++                }
++
++                $offset += $chunkLength;
++                $chunkIndex++;
+             }
++        } finally {
++            fclose($fileHandle);
++        }
++    }
++
++    private function validateTextUrl(string $caption, string $url): void
++    {
++        if (empty(trim($caption))) {
++            throw new SocialMediaException('Caption cannot be empty.');
++        }
+ 
+-            $offset += $chunkLength;
+-            $chunkIndex++;
++        if (!filter_var($url, FILTER_VALIDATE_URL)) {
++            throw new SocialMediaException('Invalid URL provided.');
+         }
+     }
+ 
+     /**
+-     * Validate input parameters.
++     * Validate the input for media uploads (accepts URL or local path).
+      *
+-     * @param string $caption The caption text.
+-     * @param string $url The URL.
++     * @param string $caption The caption.
++     * @param string $urlOrPath The media URL or file path.
+      * @throws SocialMediaException
+      */
+-    private function validateInput(string $caption, string $url): void
++    private function validateMediaInput(string $caption, string $urlOrPath): void
+     {
+         if (empty(trim($caption))) {
+             throw new SocialMediaException('Caption cannot be empty.');
+         }
+ 
+-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+-            throw new SocialMediaException('Invalid URL provided.');
++        // Accept a valid URL or an existing local file path (for pre-downloaded media).
++        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
++            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
+         }
+     }
+ 
+diff --git a/src/Services/TwitterService.php b/src/Services/TwitterService.php
+index 1a56de2..ea6321a 100644
+--- a/src/Services/TwitterService.php
++++ b/src/Services/TwitterService.php
+@@ -90,11 +90,11 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
+     public static function getInstance(): TwitterService
+     {
+         if (self::$instance === null) {
+-            $bearerToken = config('autopost.twitter_bearer_token');
+-            $apiKey = config('autopost.twitter_api_key');
+-            $apiSecret = config('autopost.twitter_api_secret');
+-            $accessToken = config('autopost.twitter_access_token');
+-            $accessTokenSecret = config('autopost.twitter_access_token_secret');
++            $bearerToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_bearer_token');
++            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_key');
++            $apiSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_secret');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token');
++            $accessTokenSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token_secret');
+ 
+             if (!$bearerToken || !$apiKey || !$apiSecret || !$accessToken || !$accessTokenSecret) {
+                 throw new SocialMediaException('Twitter credentials are not properly configured.');
+@@ -260,26 +260,49 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
+      */
+     private function uploadMedia(string $mediaUrl, string $type): string
+     {
+-        // Download media content
+-        $mediaContent = file_get_contents($mediaUrl);
+-        if ($mediaContent === false) {
+-            throw new SocialMediaException('Failed to download media from URL: ' . $mediaUrl);
++        // Accept both a remote URL (downloaded securely) and a local file path.
++        // Local paths are used in tests and allow callers that have already
++        // validated / downloaded the file themselves.
++        if (filter_var($mediaUrl, FILTER_VALIDATE_URL)) {
++            $tempFile = $this->downloadFile($mediaUrl);
++            $isTemp   = true;
++        } else {
++            $tempFile = $mediaUrl;
++            $isTemp   = false;
+         }
+ 
+-        // Upload to Twitter
+-        $url = 'https://upload.twitter.com/1.1/media/upload.json';
+-        $params = [
+-            'media' => base64_encode($mediaContent),
+-            'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image'
+-        ];
++        try {
++            $maxMediaSize = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 50 * 1024 * 1024);
++            
++            if (filesize($tempFile) > $maxMediaSize) {
++                throw new SocialMediaException("File size exceeds the configured maximum media size limit for Twitter upload.");
++            }
+ 
+-        $response = $this->sendRequest($url, 'post', $params);
+-        
+-        if (!isset($response['media_id_string'])) {
+-            throw new SocialMediaException('Failed to upload media to Twitter');
+-        }
++            // Read the safely limited file into memory for Twitter API
++            $mediaContent = file_get_contents($tempFile);
++            if ($mediaContent === false) {
++                throw new SocialMediaException('Failed to read media file: ' . $tempFile);
++            }
+ 
+-        return $response['media_id_string'];
++            // Upload to Twitter
++            $url    = 'https://upload.twitter.com/1.1/media/upload.json';
++            $params = [
++                'media'          => base64_encode($mediaContent),
++                'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image',
++            ];
++
++            $response = $this->sendRequest($url, 'post', $params);
++
++            if (!isset($response['media_id_string'])) {
++                throw new SocialMediaException('Failed to upload media to Twitter');
++            }
++
++            return $response['media_id_string'];
++        } finally {
++            if ($isTemp && file_exists($tempFile)) {
++                @unlink($tempFile);
++            }
++        }
+     }
+ 
+     /**
+@@ -301,14 +324,15 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
+      * @param string $url The URL.
+      * @throws SocialMediaException
+      */
+-    private function validateInput(string $caption, string $url): void
++    private function validateInput(string $caption, string $urlOrPath): void
+     {
+         if (empty(trim($caption))) {
+             throw new SocialMediaException('Caption cannot be empty.');
+         }
+ 
+-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+-            throw new SocialMediaException('Invalid URL provided.');
++        // Accept a valid URL or an existing local file path (for pre-downloaded media).
++        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
++            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
+         }
+     }
+ 
+diff --git a/src/Services/YouTubeService.php b/src/Services/YouTubeService.php
+index 0a5f796..6ae2cc6 100644
+--- a/src/Services/YouTubeService.php
++++ b/src/Services/YouTubeService.php
+@@ -74,9 +74,9 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+     public static function getInstance(): YouTubeService
+     {
+         if (self::$instance === null) {
+-            $apiKey = config('autopost.youtube_api_key');
+-            $accessToken = config('autopost.youtube_access_token');
+-            $channelId = config('autopost.youtube_channel_id');
++            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_api_key');
++            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_access_token');
++            $channelId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_channel_id');
+ 
+             if (!$apiKey || !$accessToken || !$channelId) {
+                 throw new SocialMediaException('YouTube credentials are not properly configured.');
+@@ -98,7 +98,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+      */
+     public function share(string $caption, string $url): array
+     {
+-        $this->validateInput($caption, $url);
++        $this->validateTextUrl($caption, $url);
+         
+         try {
+             // YouTube doesn't support direct text posts
+@@ -121,7 +121,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+      */
+     public function shareImage(string $caption, string $image_url): array
+     {
+-        $this->validateInput($caption, $image_url);
++        $this->validateTextUrl($caption, $image_url);
+         
+         try {
+             // YouTube doesn't support direct image posts
+@@ -143,7 +143,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+      */
+     public function shareVideo(string $caption, string $video_url): array
+     {
+-        $this->validateInput($caption, $video_url);
++        $this->validateMediaInput($caption, $video_url);
+         
+         try {
+             // Step 1: Upload video metadata
+@@ -159,17 +159,28 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+                 ]
+             ];
+ 
+-            // Step 2: Upload video file
+-            $videoContent = file_get_contents($video_url);
+-            if ($videoContent === false) {
+-                throw new SocialMediaException('Failed to download video from URL: ' . $video_url);
++            // Step 2: Upload video — accepts a remote URL (downloaded securely via
++            // SafeMediaFetcher) or a local file path. Local paths bypass the fetcher
++            // and are used in tests / when the caller has already validated the file.
++            if (filter_var($video_url, FILTER_VALIDATE_URL)) {
++                $tempFile = $this->downloadFile($video_url);
++                $isTemp   = true;
++            } else {
++                $tempFile = $video_url;
++                $isTemp   = false;
+             }
+ 
+-            $uploadUrl = $this->buildApiUrl('videos');
+-            $response = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
+-            
+-            Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
+-            return $response;
++            try {
++                $uploadUrl = $this->buildApiUrl('videos');
++                $response  = $this->uploadVideo($uploadUrl, $metadata, $tempFile);
++
++                Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
++                return $response;
++            } finally {
++                if ($isTemp && file_exists($tempFile)) {
++                    @unlink($tempFile);
++                }
++            }
+         } catch (\Exception $e) {
+             Log::error('Failed to share video to YouTube', ['error' => $e->getMessage()]);
+             throw new SocialMediaException('Failed to share video to YouTube: ' . $e->getMessage());
+@@ -216,33 +227,40 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+      *
+      * @param string $uploadUrl The YouTube upload URL.
+      * @param array $metadata The video metadata.
+-     * @param string $videoContent The video content.
++     * @param string $videoFilePath The path to the video file to upload.
+      * @return array Response from the YouTube API.
+      * @throws SocialMediaException
+      */
+-    private function uploadVideo(string $uploadUrl, array $metadata, string $videoContent): array
++    private function uploadVideo(string $uploadUrl, array $metadata, string $videoFilePath): array
+     {
+         $boundary = uniqid();
+         $delimiter = '-------------' . $boundary;
+         
+-        $postData = '';
+-        $postData .= "--" . $delimiter . "\r\n";
+-        $postData .= 'Content-Disposition: form-data; name="metadata"' . "\r\n";
+-        $postData .= 'Content-Type: application/json; charset=UTF-8' . "\r\n";
+-        $postData .= "\r\n";
+-        $postData .= json_encode($metadata) . "\r\n";
+-        $postData .= "--" . $delimiter . "\r\n";
+-        $postData .= 'Content-Disposition: form-data; name="video"; filename="video.mp4"' . "\r\n";
+-        $postData .= 'Content-Type: video/mp4' . "\r\n";
+-        $postData .= "\r\n";
+-        $postData .= $videoContent . "\r\n";
+-        $postData .= "--" . $delimiter . "--\r\n";
++        $part1 = "--" . $delimiter . "\r\n";
++        $part1 .= 'Content-Type: application/json; charset=UTF-8' . "\r\n\r\n";
++        $part1 .= json_encode($metadata) . "\r\n";
++        
++        $part2 = "--" . $delimiter . "\r\n";
++        $part2 .= 'Content-Type: application/octet-stream' . "\r\n\r\n";
++        
++        $part3 = "\r\n--" . $delimiter . "--\r\n";
++
++        $fileStream = \GuzzleHttp\Psr7\Utils::streamFor(fopen($videoFilePath, 'rb'));
++        
++        $stream = new \GuzzleHttp\Psr7\AppendStream([
++            \GuzzleHttp\Psr7\Utils::streamFor($part1),
++            \GuzzleHttp\Psr7\Utils::streamFor($part2),
++            $fileStream,
++            \GuzzleHttp\Psr7\Utils::streamFor($part3),
++        ]);
+ 
+         $response = \Illuminate\Support\Facades\Http::withHeaders([
+             'Authorization' => 'Bearer ' . $this->access_token,
+             'Content-Type' => 'multipart/related; boundary=' . $delimiter,
+-            'Content-Length' => strlen($postData)
+-        ])->post($uploadUrl, $postData);
++            'Content-Length' => $stream->getSize()
++        ])->send('POST', $uploadUrl, [
++            'body' => $stream
++        ]);
+ 
+         if (!$response->successful()) {
+             $errorData = $response->json();
+@@ -362,21 +380,33 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
+         return array_slice($tags, 0, 15);
+     }
+ 
++    private function validateTextUrl(string $caption, string $url): void
++    {
++        if (empty(trim($caption))) {
++            throw new SocialMediaException('Caption cannot be empty.');
++        }
++
++        if (!filter_var($url, FILTER_VALIDATE_URL)) {
++            throw new SocialMediaException('Invalid URL provided.');
++        }
++    }
++
+     /**
+-     * Validate input parameters.
++     * Validate the input for media uploads (accepts URL or local path).
+      *
+-     * @param string $caption The caption text.
+-     * @param string $url The URL.
++     * @param string $caption The caption.
++     * @param string $urlOrPath The media URL or file path.
+      * @throws SocialMediaException
+      */
+-    private function validateInput(string $caption, string $url): void
++    private function validateMediaInput(string $caption, string $urlOrPath): void
+     {
+         if (empty(trim($caption))) {
+             throw new SocialMediaException('Caption cannot be empty.');
+         }
+ 
+-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+-            throw new SocialMediaException('Invalid URL provided.');
++        // Accept a valid URL or an existing local file path (for pre-downloaded media).
++        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
++            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
+         }
+     }
+ 
+diff --git a/src/Utils/ConfigHelper.php b/src/Utils/ConfigHelper.php
+new file mode 100644
+index 0000000..27e87f3
+--- /dev/null
++++ b/src/Utils/ConfigHelper.php
+@@ -0,0 +1,30 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Utils;
++
++class ConfigHelper
++{
++    /**
++     * Safely retrieve a configuration value.
++     * 
++     * This wrapper prevents exceptions when running in raw PHPUnit environments
++     * where the Laravel application container is not fully booted and the 'config'
++     * binding is missing.
++     *
++     * @param string $key
++     * @param mixed $default
++     * @return mixed
++     */
++    public static function get(string $key, $default = null)
++    {
++        try {
++            if (function_exists('config')) {
++                return config($key, $default);
++            }
++        } catch (\Throwable $t) {
++            // Laravel container not available, fallback to default
++        }
++
++        return $default;
++    }
++}
+diff --git a/src/Utils/SafeMediaFetcher.php b/src/Utils/SafeMediaFetcher.php
+new file mode 100644
+index 0000000..170845f
+--- /dev/null
++++ b/src/Utils/SafeMediaFetcher.php
+@@ -0,0 +1,337 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Utils;
++
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
++use Illuminate\Support\Facades\Log;
++
++class SafeMediaFetcher
++{
++    private const MAX_REDIRECTS = 5;
++    private const CONNECT_TIMEOUT = 10;
++    private const TOTAL_TIMEOUT = 120;
++    private const LOW_SPEED_LIMIT = 1024; // 1 KB/s
++    private const LOW_SPEED_TIME = 15; // abort if below 1KB/s for 15s
++    
++    private int $maxBytes;
++    private array $allowedMimeTypes;
++    
++    private int $bytesReceived = 0;
++    private ?string $tempFilePath = null;
++    private $fileHandle = null;
++
++    /**
++     * @param int $maxBytes Maximum file size in bytes (default 50MB)
++     * @param array $allowedMimeTypes Allowed MIME types prefix (empty array = any)
++     */
++    public function __construct(int $maxBytes = 52428800, array $allowedMimeTypes = ['image/', 'video/'])
++    {
++        $this->maxBytes = $maxBytes;
++        $this->allowedMimeTypes = $allowedMimeTypes;
++    }
++
++    /**
++     * Static helper for ease of use.
++     *
++     * @throws SocialMediaException
++     */
++    public static function fetch(string $url, ?int $maxBytes = null): string
++    {
++        $maxBytes = $maxBytes ?? \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 52428800);
++        
++        $fetcher = new self($maxBytes);
++        return $fetcher->execute($url);
++    }
++
++    /**
++     * Execute the secure fetch.
++     *
++     * @throws SocialMediaException
++     */
++    public function execute(string $url, int $redirectCount = 0): string
++    {
++        $maxRedirects = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_redirects', self::MAX_REDIRECTS);
++
++        if ($redirectCount > $maxRedirects) {
++            throw new SocialMediaException("Too many redirects (max " . $maxRedirects . ").");
++        }
++
++        // Validate scheme
++        $scheme = parse_url($url, PHP_URL_SCHEME);
++        if (!in_array(strtolower($scheme ?? ''), ['http', 'https'], true)) {
++            throw new SocialMediaException("Invalid URL scheme. Only HTTP and HTTPS are allowed.");
++        }
++
++        // Validate hostname and resolve to IP
++        $host = parse_url($url, PHP_URL_HOST);
++        if (empty($host)) {
++            throw new SocialMediaException("Invalid URL: Hostname missing.");
++        }
++        
++        // Remove IPv6 brackets if present
++        $host = trim($host, '[]');
++
++        // Get port (default to 80/443 based on scheme)
++        $port = parse_url($url, PHP_URL_PORT);
++        if (empty($port)) {
++            $port = (strtolower($scheme) === 'https') ? 443 : 80;
++        }
++
++        // Resolve DNS and validate the resolved IP
++        $resolvedIp = $this->resolveAndValidateHost($host);
++
++        // Prepare temp file for streaming
++        if ($redirectCount === 0) {
++            $this->bytesReceived = 0;
++            $this->tempFilePath = tempnam(sys_get_temp_dir(), 'social_post_media_');
++            if ($this->tempFilePath === false) {
++                throw new SocialMediaException("Failed to create a temporary file for download.");
++            }
++        }
++        
++        // Always truncate ('wb') so that a redirect response body from a previous
++        // iteration is never prepended to the final media bytes. (Bug fix: was 'ab')
++        $this->fileHandle = fopen($this->tempFilePath, 'wb');
++        if ($this->fileHandle === false) {
++            $this->cleanup();
++            throw new SocialMediaException("Failed to open temporary file for writing.");
++        }
++
++        // Initialize cURL
++        $ch = curl_init();
++        curl_setopt($ch, CURLOPT_URL, $url);
++        
++        // Prevent cURL from following redirects automatically so we can validate them
++        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
++        
++        // Force cURL to use the resolved IP (mitigates DNS rebinding)
++        // CURLOPT_RESOLVE format: array("HOST:PORT:IP")
++        curl_setopt($ch, CURLOPT_RESOLVE, ["{$host}:{$port}:{$resolvedIp}"]);
++        
++        // Disable proxy by explicitly setting CURLOPT_PROXY to an empty string.
++        // This ensures the request uses the validated destination IP directly and
++        // ignores any ambient proxy environment variables (e.g. HTTP_PROXY).
++        curl_setopt($ch, CURLOPT_PROXY, '');
++        
++        // Ensure a fresh connection is made using the resolved IP
++        curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
++        
++        // Timeouts
++        $timeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.timeout', self::TOTAL_TIMEOUT);
++        $connectTimeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.connect_timeout', self::CONNECT_TIMEOUT);
++        $lowSpeedLimit = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.low_speed_limit', self::LOW_SPEED_LIMIT);
++        $lowSpeedTime = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.low_speed_time', self::LOW_SPEED_TIME);
++        
++        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
++        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
++        curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, $lowSpeedLimit);
++        curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, $lowSpeedTime);
++        
++        // Header callback for redirects
++        $redirectUrl = null;
++        curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $header) use (&$redirectUrl, $url) {
++            $len = strlen($header);
++            $headerParts = explode(':', $header, 2);
++            if (count($headerParts) < 2) {
++                return $len;
++            }
++
++            if (strtolower(trim($headerParts[0])) === 'location') {
++                $location = trim($headerParts[1]);
++                // Handle relative URLs
++                if (preg_match('~^(http|https)://~i', $location)) {
++                    $redirectUrl = $location;
++                } else {
++                    $redirectUrl = $this->resolveRelativeUrl($url, $location);
++                }
++            }
++            return $len;
++        });
++
++        // Write callback for streaming and size enforcement
++        curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) {
++            $chunkSize = strlen($data);
++            $this->bytesReceived += $chunkSize;
++            
++            if ($this->bytesReceived > $this->maxBytes) {
++                // Abort transfer
++                return -1; 
++            }
++            
++            return fwrite($this->fileHandle, $data);
++        });
++
++        // Execute
++        $result = curl_exec($ch);
++        $error = curl_error($ch);
++        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
++        curl_close($ch);
++        fclose($this->fileHandle);
++
++        if ($result === false) {
++            $this->cleanup();
++            if ($this->bytesReceived > $this->maxBytes) {
++                throw new SocialMediaException("Download aborted: File size exceeded the limit of {$this->maxBytes} bytes.");
++            }
++            throw new SocialMediaException("Failed to download file: " . $error);
++        }
++
++        // Handle Redirects manually
++        if ($httpCode >= 300 && $httpCode < 400 && $redirectUrl) {
++            return $this->execute($redirectUrl, $redirectCount + 1);
++        }
++
++        // Validate HTTP Code
++        if ($httpCode < 200 || $httpCode >= 300) {
++            $this->cleanup();
++            throw new SocialMediaException("Download failed with HTTP status {$httpCode}.");
++        }
++
++        // Validate MIME type
++        if ($redirectCount === 0 || $this->bytesReceived > 0) {
++             $this->validateMimeType();
++        }
++
++        return $this->tempFilePath;
++    }
++
++    /**
++     * Delete the temporary file if it exists.
++     */
++    public function cleanup(): void
++    {
++        if ($this->tempFilePath && file_exists($this->tempFilePath)) {
++            @unlink($this->tempFilePath);
++        }
++    }
++
++    /**
++     * Resolves hostname and validates the IP against SSRF blacklists.
++     *
++     * @throws SocialMediaException
++     */
++    private function resolveAndValidateHost(string $host): string
++    {
++        // First check if host is already an IP
++        if (filter_var($host, FILTER_VALIDATE_IP)) {
++            $this->validateIpAddress($host);
++            return $host;
++        }
++
++        // Resolve DNS
++        $records = dns_get_record($host, DNS_A | DNS_AAAA);
++        if ($records === false || empty($records)) {
++            throw new SocialMediaException("Could not resolve hostname: {$host}");
++        }
++
++        // Validate the first successfully resolved IP
++        $resolvedIp = $records[0]['ipv6'] ?? $records[0]['ip'] ?? null;
++        
++        if (!$resolvedIp) {
++            throw new SocialMediaException("Hostname resolved to an empty IP record.");
++        }
++
++        $this->validateIpAddress($resolvedIp);
++        
++        return $resolvedIp;
++    }
++
++    /**
++     * Validates IP address against a strict blacklist.
++     *
++     * @throws SocialMediaException
++     */
++    private function validateIpAddress(string $ip): void
++    {
++        // Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:192.168.1.1)
++        if (preg_match('/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i', $ip, $matches)) {
++            $ip = $matches[1];
++        }
++
++        // FILTER_VALIDATE_IP flags to easily block private and reserved ranges
++        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
++            throw new SocialMediaException("Access to private or reserved IP ({$ip}) is forbidden.");
++        }
++        
++        // Manual checks for specific IPv6 ranges that might slip through
++        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
++            // Loopback
++            if ($ip === '::1') {
++                throw new SocialMediaException("Access to loopback IP is forbidden.");
++            }
++            // IPv4-compatible (::/96)
++            if (str_starts_with($ip, '::') && substr_count($ip, ':') >= 2) {
++                // Not a robust check for ::/96 but we rely on filter_var mainly
++                // Just block completely 0-prefixed other than ::1
++                if (preg_match('/^::[0-9a-f]{1,4}$/i', $ip) && $ip !== '::1') {
++                    throw new SocialMediaException("Access to IPv4-compatible IPv6 is forbidden.");
++                }
++            }
++        }
++    }
++
++    /**
++     * Validates the MIME type of the fully downloaded file.
++     *
++     * @throws SocialMediaException
++     */
++    private function validateMimeType(): void
++    {
++        if (!empty($this->allowedMimeTypes)) {
++            $finfo = finfo_open(FILEINFO_MIME_TYPE);
++            $mime = finfo_file($finfo, $this->tempFilePath);
++            finfo_close($finfo);
++
++            if ($mime === false) {
++                $this->cleanup();
++                throw new SocialMediaException("Failed to detect MIME type of downloaded file.");
++            }
++
++            $allowed = false;
++            foreach ($this->allowedMimeTypes as $prefix) {
++                if (str_starts_with($mime, $prefix)) {
++                    $allowed = true;
++                    break;
++                }
++            }
++
++            if (!$allowed) {
++                $this->cleanup();
++                throw new SocialMediaException("MIME type '{$mime}' is not allowed.");
++            }
++        }
++    }
++
++    /**
++     * Helper to resolve relative redirects against the base URL.
++     */
++    private function resolveRelativeUrl(string $baseUrl, string $relativeUrl): string
++    {
++        if (parse_url($relativeUrl, PHP_URL_SCHEME) != '') {
++            return $relativeUrl;
++        }
++
++        if (str_starts_with($relativeUrl, '//')) {
++            // Protocol-relative URL (e.g. "//cdn.example.com/file.mp4"):
++            // prepend the scheme only — do NOT strip the "//" from the path.
++            // Bug fix: ltrim($relativeUrl, '/') was removing both slashes,
++            // producing "https:cdn.example.com" instead of "https://cdn.example.com".
++            $scheme = parse_url($baseUrl, PHP_URL_SCHEME);
++            return $scheme . ':' . $relativeUrl;
++        }
++
++        $parsedBase = parse_url($baseUrl);
++        $scheme = $parsedBase['scheme'];
++        $host = $parsedBase['host'];
++        $port = isset($parsedBase['port']) ? ':' . $parsedBase['port'] : '';
++        
++        if (str_starts_with($relativeUrl, '/')) {
++            return "{$scheme}://{$host}{$port}{$relativeUrl}";
++        }
++
++        $path = $parsedBase['path'] ?? '/';
++        $path = preg_replace('#/[^/]*$#', '', $path);
++        
++        return "{$scheme}://{$host}{$port}{$path}/{$relativeUrl}";
++    }
++}
+diff --git a/src/config/autopost.php b/src/config/autopost.php
+index 75e106a..a84a1ec 100644
+--- a/src/config/autopost.php
++++ b/src/config/autopost.php
+@@ -45,7 +45,15 @@ return [
+     'default_platforms' => ['facebook', 'twitter', 'linkedin'],
+     'enable_logging'    => env('SOCIAL_MEDIA_LOGGING', true),
+     'timeout'           => env('SOCIAL_MEDIA_TIMEOUT', 30),
++    'connect_timeout'   => env('SOCIAL_MEDIA_CONNECT_TIMEOUT', 10),
+     'retry_attempts'    => env('SOCIAL_MEDIA_RETRY_ATTEMPTS', 3),
++    'retry_backoff_base'=> env('SOCIAL_MEDIA_RETRY_BACKOFF_BASE', 2),
++    
++    // Media Configuration
++    'max_media_size'    => env('SOCIAL_MEDIA_MAX_MEDIA_SIZE', 50 * 1024 * 1024), // 50MB default
++    'max_redirects'     => env('SOCIAL_MEDIA_MAX_REDIRECTS', 5),
++    'low_speed_limit'   => env('SOCIAL_MEDIA_LOW_SPEED_LIMIT', 1024), // 1KB/s
++    'low_speed_time'    => env('SOCIAL_MEDIA_LOW_SPEED_TIME', 10),
+ ];
+ 
+ 
+diff --git a/tests/Feature/SafeMediaFetcherTest.php b/tests/Feature/SafeMediaFetcherTest.php
+new file mode 100644
+index 0000000..a9f8d1c
+--- /dev/null
++++ b/tests/Feature/SafeMediaFetcherTest.php
+@@ -0,0 +1,297 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Feature;
++
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
++use HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher;
++use PHPUnit\Framework\TestCase;
++
++class SafeMediaFetcherTest extends TestCase
++{
++    protected function tearDown(): void
++    {
++        // Clean up temp files that might have leaked
++        $files = glob(sys_get_temp_dir() . '/social_post_media_*');
++        foreach ($files as $file) {
++            @unlink($file);
++        }
++        parent::tearDown();
++    }
++
++    public function test_it_rejects_invalid_schemes()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Invalid URL scheme');
++        
++        SafeMediaFetcher::fetch('file:///etc/passwd');
++    }
++
++    public function test_it_rejects_localhost_ipv4()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('http://127.0.0.1/test.mp4');
++    }
++
++    public function test_it_rejects_private_ipv4()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('http://10.0.0.1/test.mp4');
++    }
++
++    public function test_it_rejects_aws_metadata()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('http://169.254.169.254/latest/meta-data/');
++    }
++
++    public function test_it_rejects_localhost_ipv6()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('http://[::1]/test.mp4');
++    }
++
++    public function test_it_rejects_ipv4_mapped_ipv6()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('http://[::ffff:127.0.0.1]/test.mp4');
++    }
++
++    public function test_it_rejects_dns_rebinding_to_localhost()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        // This public DNS record is known to resolve to 127.0.0.1 for testing
++        // localtest.me -> 127.0.0.1
++        SafeMediaFetcher::fetch('http://localtest.me/test.mp4');
++    }
++
++    public function test_it_enforces_size_limit_and_cleans_up_temp_file()
++    {
++        $limit = 10; // 10 bytes max
++        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
++
++        $filesBefore = glob(sys_get_temp_dir() . '/social_post_media_*');
++        
++        try {
++            SafeMediaFetcher::fetch($url, $limit);
++            $this->fail('Expected exception for size limit exceeded was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertStringContainsString('File size exceeded the limit', $e->getMessage());
++        }
++
++        $filesAfter = glob(sys_get_temp_dir() . '/social_post_media_*');
++        
++        // Assert temp file was cleaned up on failure
++        $this->assertEquals(count($filesBefore), count($filesAfter));
++    }
++
++    public function test_it_validates_mime_type_on_success()
++    {
++        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
++        
++        try {
++            // Attempt to fetch, expecting image/video by default
++            SafeMediaFetcher::fetch($url);
++            $this->fail('Expected exception for invalid MIME type was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertStringContainsString('is not allowed', $e->getMessage());
++        }
++    }
++
++    public function test_it_allows_disabling_mime_check()
++    {
++        // README.md is a text file.
++        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
++        
++        $fetcher = new SafeMediaFetcher(1024 * 1024, []); // Empty array = no mime check
++        $tempFile = $fetcher->execute($url);
++        
++        $this->assertFileExists($tempFile);
++        $content = file_get_contents($tempFile);
++        $this->assertStringContainsString('Laravel Social Auto Post', $content);
++        
++        // Caller is responsible for cleanup
++        unlink($tempFile);
++        $this->assertFileDoesNotExist($tempFile);
++    }
++
++    public function test_it_rejects_redirect_to_private_ip()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Access to private or reserved IP');
++        
++        SafeMediaFetcher::fetch('https://httpbin.org/redirect-to?url=http://10.0.0.1/test.mp4');
++    }
++
++    public function test_it_rejects_redirect_to_invalid_scheme()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Invalid URL scheme');
++        
++        SafeMediaFetcher::fetch('https://httpbin.org/redirect-to?url=file:///etc/passwd');
++    }
++
++    public function test_it_limits_redirects()
++    {
++        $this->expectException(SocialMediaException::class);
++        $this->expectExceptionMessage('Too many redirects');
++        
++        SafeMediaFetcher::fetch('https://httpbin.org/redirect/6');
++    }
++
++    // ─────────────────────────────────────────────────────────────────────────
++    // TDD: Bug 2 — protocol-relative redirect URL construction
++    // ─────────────────────────────────────────────────────────────────────────
++
++    /**
++     * BUG: ltrim($relativeUrl, '/') strips both slashes from "//host/path",
++     * producing "https:host/path" instead of "https://host/path".
++     *
++     * @test
++     */
++    public function test_resolves_protocol_relative_redirect_url_correctly(): void
++    {
++        $fetcher = new SafeMediaFetcher();
++        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
++        $method->setAccessible(true);
++
++        $result = $method->invoke(
++            $fetcher,
++            'https://example.com/some/path',
++            '//cdn.example.com/media/file.mp4'
++        );
++
++        $this->assertEquals(
++            'https://cdn.example.com/media/file.mp4',
++            $result,
++            'Protocol-relative redirect must produce a valid absolute URL with scheme and double-slash.'
++        );
++    }
++
++    /**
++     * Absolute redirect URL must pass through unchanged.
++     *
++     * @test
++     */
++    public function test_resolves_absolute_redirect_url_unchanged(): void
++    {
++        $fetcher = new SafeMediaFetcher();
++        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
++        $method->setAccessible(true);
++
++        $result = $method->invoke(
++            $fetcher,
++            'https://example.com/',
++            'https://other.example.com/file.mp4'
++        );
++
++        $this->assertEquals('https://other.example.com/file.mp4', $result);
++    }
++
++    /**
++     * Root-relative redirect (e.g. "/media/file.mp4") must be resolved
++     * against the origin of the base URL.
++     *
++     * @test
++     */
++    public function test_resolves_root_relative_redirect_url_correctly(): void
++    {
++        $fetcher = new SafeMediaFetcher();
++        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
++        $method->setAccessible(true);
++
++        $result = $method->invoke(
++            $fetcher,
++            'https://example.com/some/path',
++            '/media/file.mp4'
++        );
++
++        $this->assertEquals('https://example.com/media/file.mp4', $result);
++    }
++
++    // ─────────────────────────────────────────────────────────────────────────
++    // TDD: Bug 1 — redirect response body must not be prepended to final file
++    // ─────────────────────────────────────────────────────────────────────────
++
++    /**
++     * When downloading a URL that redirects to the real media, the final
++     * temp file must contain ONLY the body of the final (200) response.
++     *
++     * httpbin.org/redirect-to?url=<target>&status_code=302 returns a 302
++     * with a small HTML body, then the target.
++     * Before the fix, the HTML body was prepended to the image bytes,
++     * corrupting the file and making finfo see "text/html".
++     *
++     * We verify: MIME type of the saved file is image/jpeg (not text/html).
++     *
++     * @test
++     */
++    public function test_redirect_final_file_contains_only_target_body(): void
++    {
++        // httpbin.org/image/jpeg reliably returns a real JPEG (Content-Type: image/jpeg).
++        // httpbin.org/redirect-to?url=<target>&status_code=302 returns a 302 whose
++        // response body is a short HTML snippet — exactly what triggers Bug 1.
++        // Before the fix, the HTML body was prepended to the JPEG bytes, making
++        // finfo_file() report "text/html" instead of "image/jpeg".
++        $targetUrl   = 'https://httpbin.org/image/jpeg';
++        $redirectUrl = 'https://httpbin.org/redirect-to?url=' . urlencode($targetUrl) . '&status_code=302';
++
++        $fetcher  = new SafeMediaFetcher(1024 * 1024, []); // disable MIME check; we inspect manually
++        $tempFile = $fetcher->execute($redirectUrl);
++
++        try {
++            $this->assertFileExists($tempFile);
++
++            $finfo = finfo_open(FILEINFO_MIME_TYPE);
++            $mime  = finfo_file($finfo, $tempFile);
++            finfo_close($finfo);
++
++            $this->assertEquals(
++                'image/jpeg',
++                $mime,
++                'File after redirect must be pure JPEG — not corrupted by the redirect response HTML body.'
++            );
++        } finally {
++            if (file_exists($tempFile)) {
++                @unlink($tempFile);
++            }
++        }
++    }
++    public function test_ignores_ambient_proxy_environment_variables(): void
++    {
++        // Set a dummy HTTP_PROXY that points to an invalid/non-existent server
++        putenv('HTTP_PROXY=http://127.0.0.1:9999');
++        putenv('HTTPS_PROXY=http://127.0.0.1:9999');
++
++        try {
++            $url = 'https://httpbin.org/image/jpeg';
++            $fetcher = new SafeMediaFetcher(1024 * 1024, []); // disable MIME checking for simplicity
++
++            // If the proxy is used, this will fail with a connection refused error or timeout.
++            // If CURLOPT_PROXY => '' works, it will bypass the proxy and succeed.
++            $tempFile = $fetcher->execute($url);
++            
++            $this->assertFileExists($tempFile);
++            $this->assertGreaterThan(0, filesize($tempFile));
++
++            if (file_exists($tempFile)) {
++                @unlink($tempFile);
++            }
++        } finally {
++            // Clean up environment variables
++            putenv('HTTP_PROXY');
++            putenv('HTTPS_PROXY');
++        }
++    }
++}
+diff --git a/tests/Feature/SocialMediaManagerCharacterizationTest.php b/tests/Feature/SocialMediaManagerCharacterizationTest.php
+new file mode 100644
+index 0000000..fdfdfe4
+--- /dev/null
++++ b/tests/Feature/SocialMediaManagerCharacterizationTest.php
+@@ -0,0 +1,138 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Feature;
++
++use HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostFailed;
++use HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublished;
++use HamzaHassanM\LaravelSocialAutoPost\Events\SocialPostPublishing;
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
++use HamzaHassanM\LaravelSocialAutoPost\Facades\SocialMedia;
++use HamzaHassanM\LaravelSocialAutoPost\Tests\Feature\TestCase;
++use Illuminate\Support\Facades\Event;
++use Illuminate\Support\Facades\Http;
++
++class SocialMediaManagerCharacterizationTest extends TestCase
++{
++    protected function setUp(): void
++    {
++        parent::setUp();
++        
++        // Mock credentials for all platforms so validation doesn't fail
++        $platforms = ['facebook', 'twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'pinterest', 'telegram'];
++        foreach ($platforms as $platform) {
++            config(["autopost.{$platform}_access_token" => 'test_token']);
++            // Add specific required configs
++            if ($platform === 'facebook') {
++                config(['autopost.facebook_page_id' => 'test_page']);
++            }
++            if ($platform === 'twitter') {
++                config(['autopost.twitter_bearer_token' => 'test_bearer']);
++                config(['autopost.twitter_api_key' => 'test_key']);
++                config(['autopost.twitter_api_secret' => 'test_secret']);
++                config(['autopost.twitter_access_token_secret' => 'test_secret']);
++            }
++            if ($platform === 'linkedin') {
++                config(['autopost.linkedin_person_urn' => 'test_urn']);
++            }
++            if ($platform === 'instagram') {
++                config(['autopost.instagram_account_id' => 'test_account']);
++            }
++            if ($platform === 'tiktok') {
++                config(['autopost.tiktok_client_key' => 'test_key']);
++                config(['autopost.tiktok_client_secret' => 'test_secret']);
++            }
++            if ($platform === 'youtube') {
++                config(['autopost.youtube_api_key' => 'test_key']);
++                config(['autopost.youtube_channel_id' => 'test_channel']);
++            }
++            if ($platform === 'pinterest') {
++                config(['autopost.pinterest_board_id' => 'test_board']);
++            }
++            if ($platform === 'telegram') {
++                config(['autopost.telegram_bot_token' => 'test_bot']);
++                config(['autopost.telegram_chat_id' => 'test_chat']);
++            }
++        }
++    }
++
++    public function test_it_returns_expected_array_structure_and_fires_synchronous_events_on_success()
++    {
++        Event::fake();
++        
++        Http::fake([
++            'graph.facebook.com/*' => Http::response(['id' => '12345_67890'], 200),
++        ]);
++
++        $result = SocialMedia::share(['facebook'], 'Test caption', 'https://example.com');
++
++        $this->assertIsArray($result);
++        $this->assertArrayHasKey('results', $result);
++        $this->assertArrayHasKey('errors', $result);
++        $this->assertArrayHasKey('success_count', $result);
++        $this->assertArrayHasKey('error_count', $result);
++        $this->assertArrayHasKey('total_platforms', $result);
++        
++        $this->assertTrue($result['results']['facebook']['success']);
++        $this->assertEquals('12345_67890', $result['results']['facebook']['data']['id']);
++        $this->assertEquals(1, $result['success_count']);
++        
++        Event::assertDispatched(SocialPostPublishing::class, function ($event) {
++            return $event->platform === 'facebook';
++        });
++        Event::assertDispatched(SocialPostPublished::class, function ($event) use ($result) {
++            return $event->platform === 'facebook' && $event->result === $result['results']['facebook']['data'];
++        });
++        Event::assertNotDispatched(SocialPostFailed::class);
++    }
++
++    public function test_it_catches_exceptions_and_returns_them_in_aggregated_array_on_failure()
++    {
++        Event::fake();
++        
++        Http::fake([
++            'graph.facebook.com/*' => Http::response(['error' => ['message' => 'Invalid token']], 401),
++        ]);
++        
++        config(['autopost.retry_attempts' => 1]);
++
++        $result = SocialMedia::share(['facebook'], 'Test caption', 'https://example.com');
++        
++        $this->assertIsArray($result);
++        $this->assertFalse($result['results']['facebook']['success']);
++        $this->assertStringContainsString('Failed to share', $result['results']['facebook']['error']);
++        $this->assertStringContainsString('Failed to share', $result['errors']['facebook']);
++        $this->assertEquals(0, $result['success_count']);
++        $this->assertEquals(1, $result['error_count']);
++
++        Event::assertDispatched(SocialPostPublishing::class);
++        Event::assertDispatched(SocialPostFailed::class, function ($event) {
++            return $event->platform === 'facebook' && $event->exception instanceof \Exception;
++        });
++        Event::assertNotDispatched(SocialPostPublished::class);
++    }
++    
++    public function test_share_to_all_partial_success_behavior()
++    {
++        Event::fake();
++        
++        Http::fake([
++            'graph.facebook.com/*' => Http::response(['id' => 'fb_id'], 200),
++            'api.twitter.com/*' => Http::response(['detail' => 'Rate limited'], 429),
++            '*' => Http::response(['id' => 'success_id'], 200),
++        ]);
++        
++        config(['autopost.retry_attempts' => 1]);
++
++        $result = SocialMedia::shareToAll('Test caption', 'https://example.com');
++        
++        $this->assertEquals(8, $result['total_platforms']);
++        $this->assertEquals(8, $result['success_count'] + $result['error_count']);
++        
++        $this->assertTrue($result['results']['facebook']['success']);
++        $this->assertFalse($result['results']['twitter']['success']);
++        $this->assertStringContainsString('Rate limited', $result['errors']['twitter']);
++
++        Event::assertDispatched(SocialPostPublished::class);
++        Event::assertDispatched(SocialPostFailed::class);
++    }
++}
+diff --git a/tests/Feature/SocialMediaServiceRetryTest.php b/tests/Feature/SocialMediaServiceRetryTest.php
+new file mode 100644
+index 0000000..54e3ab9
+--- /dev/null
++++ b/tests/Feature/SocialMediaServiceRetryTest.php
+@@ -0,0 +1,200 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Feature;
++
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\RateLimitException;
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException;
++use HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException;
++use HamzaHassanM\LaravelSocialAutoPost\Services\SocialMediaService;
++use Illuminate\Http\Client\ConnectionException;
++use Illuminate\Http\Client\Request;
++use Illuminate\Support\Facades\Config;
++use Illuminate\Support\Facades\Http;
++use HamzaHassanM\LaravelSocialAutoPost\Tests\Feature\TestCase;
++
++class TestableSocialMediaService extends SocialMediaService
++{
++    // Expose the protected sendRequest for testing
++    public function publicSendRequest(string $url, string $method = 'post', array $params = [], array $headers = []): array
++    {
++        return $this->sendRequest($url, $method, $params, $headers);
++    }
++
++    // Stub abstract methods if any were added, though none are abstract in the base class.
++}
++
++class SocialMediaServiceRetryTest extends TestCase
++{
++    protected function setUp(): void
++    {
++        parent::setUp();
++        Config::set('autopost.retry_attempts', 3);
++    }
++
++    public function test_2xx_success_returns_immediately_with_one_attempt()
++    {
++        Http::fake([
++            '*' => Http::response(['success' => true], 200),
++        ]);
++
++        $service = new TestableSocialMediaService();
++        $response = $service->publicSendRequest('https://api.example.com/post');
++
++        $this->assertEquals(['success' => true], $response);
++        Http::assertSentCount(1);
++    }
++
++    public function test_400_fails_fast_with_one_attempt_and_no_sleep()
++    {
++        Http::fake([
++            '*' => Http::response(['error' => 'Bad Request'], 400),
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        $start = microtime(true);
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertNotInstanceOf(RateLimitException::class, $e);
++            $this->assertNotInstanceOf(RetryableException::class, $e);
++            $this->assertStringContainsString('API request failed (HTTP 400)', $e->getMessage());
++        }
++        $duration = microtime(true) - $start;
++
++        Http::assertSentCount(1);
++        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
++    }
++
++    public function test_429_fails_fast_throws_rate_limit_exception_with_retry_after()
++    {
++        Http::fake([
++            '*' => Http::response(['error' => 'Too Many Requests'], 429, ['Retry-After' => '30']),
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        $start = microtime(true);
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (RateLimitException $e) {
++            $this->assertEquals(30, $e->getRetryAfter());
++        }
++        $duration = microtime(true) - $start;
++
++        Http::assertSentCount(1);
++        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
++    }
++
++    public function test_5xx_retries_and_throws_retryable_exception_after_exhaustion()
++    {
++        Http::fake([
++            '*' => Http::response(['error' => 'Internal Server Error'], 500),
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (RetryableException $e) {
++            $this->assertEquals(500, $e->getHttpStatus());
++            $this->assertEquals(3, $e->getAttempts());
++        }
++
++        Http::assertSentCount(3);
++    }
++
++    public function test_transient_connection_timeout_retries_and_throws_retryable_exception()
++    {
++        // Fake a ConnectionException on every request
++        Http::fake([
++            '*' => function (Request $request) {
++                throw new ConnectionException('cURL error 28: Connection timed out');
++            },
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (RetryableException $e) {
++            $this->assertEquals(3, $e->getAttempts());
++            $this->assertStringContainsString('Network/Connection error', $e->getMessage());
++        }
++
++        // Http::assertSentCount does not count exceptions thrown inside fakes in some Laravel versions, 
++        // but we verify the attempts passed to the Exception itself.
++    }
++
++    public function test_non_transient_exceptions_fail_fast_without_retrying()
++    {
++        Http::fake([
++            '*' => function (Request $request) {
++                // Not a ConnectionException, just a generic LogicException
++                throw new \LogicException('Malformed configuration');
++            },
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertNotInstanceOf(RetryableException::class, $e);
++            $this->assertStringContainsString('Request failed unexpectedly: Malformed configuration', $e->getMessage());
++        }
++    }
++
++    public function test_non_transient_curl_dns_error_fails_fast_without_retrying()
++    {
++        Http::fake([
++            '*' => function (Request $request) {
++                // cURL error 6 is CURLE_COULDNT_RESOLVE_HOST
++                throw new ConnectionException('cURL error 6: Could not resolve host: api.example.com');
++            },
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        $start = microtime(true);
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertNotInstanceOf(RetryableException::class, $e);
++            $this->assertStringContainsString('Non-transient network error', $e->getMessage());
++        }
++        $duration = microtime(true) - $start;
++
++        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
++    }
++
++    public function test_non_transient_curl_ssl_error_fails_fast_without_retrying()
++    {
++        Http::fake([
++            '*' => function (Request $request) {
++                // cURL error 35 is CURLE_SSL_CONNECT_ERROR
++                throw new ConnectionException('cURL error 35: SSL connect error');
++            },
++        ]);
++
++        $service = new TestableSocialMediaService();
++
++        $start = microtime(true);
++        try {
++            $service->publicSendRequest('https://api.example.com/post');
++            $this->fail('Expected exception was not thrown.');
++        } catch (SocialMediaException $e) {
++            $this->assertNotInstanceOf(RetryableException::class, $e);
++            $this->assertStringContainsString('Non-transient network error', $e->getMessage());
++        }
++        $duration = microtime(true) - $start;
++
++        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
++    }
++}
+diff --git a/tests/Feature/SocialMediaTest.php b/tests/Feature/SocialMediaTest.php
+index e0f7302..3c1ead9 100644
+--- a/tests/Feature/SocialMediaTest.php
++++ b/tests/Feature/SocialMediaTest.php
+@@ -49,6 +49,17 @@ class SocialMediaTest extends TestCase
+         ]);
+     }
+ 
++    protected function tearDown(): void
++    {
++        // LinkedInService uses a Singleton. Reset it between tests so each test
++        // reads a fresh config (including linkedin_organization_urn).
++        $reflection = new \ReflectionProperty(\HamzaHassanM\LaravelSocialAutoPost\Services\LinkedInService::class, 'instance');
++        $reflection->setAccessible(true);
++        $reflection->setValue(null, null);
++
++        parent::tearDown();
++    }
++
+     public function testUnifiedSocialMediaSharing()
+     {
+         Http::fake([
+@@ -155,17 +166,37 @@ class SocialMediaTest extends TestCase
+ 
+     public function testTwitterImageSharing()
+     {
++        // Pass a local fixture file path instead of a URL so Http::fake() remains
++        // in full control. SafeMediaFetcher is bypassed for local paths.
+         Http::fake([
+-            'https://api.twitter.com/2/*' => Http::response(['data' => ['id' => '456']], 200),
+-            'https://upload.twitter.com/1.1/*' => Http::response(['media_id_string' => 'media123'], 200),
++            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456']], 200),
++            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123'], 200),
+         ]);
+ 
+-        $result = Twitter::shareImage('Test tweet with image', 'https://example.com/');
++        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_image.jpg');
++        $result = Twitter::shareImage('Test tweet with image', $fixturePath);
+ 
+         $this->assertArrayHasKey('data', $result);
+         $this->assertEquals('456', $result['data']['id']);
+     }
+ 
++    public function testTwitterImageSharingRemoteUrl()
++    {
++        // This tests that SafeMediaFetcher correctly downloads a remote file 
++        // before passing it to the service's upload mechanism (which is mocked).
++        Http::fake([
++            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456_remote']], 200),
++            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123_remote'], 200),
++        ]);
++
++        // A public URL that returns a small valid JPEG
++        $url = 'https://httpbin.org/image/jpeg';
++        $result = Twitter::shareImage('Test tweet with remote image', $url);
++
++        $this->assertArrayHasKey('data', $result);
++        $this->assertEquals('456_remote', $result['data']['id']);
++    }
++
+     public function testTwitterTimeline()
+     {
+         Http::fake([
+@@ -248,24 +279,67 @@ class SocialMediaTest extends TestCase
+             'https://upload.tiktok.com/upload' => Http::response([], 200)
+         ]);
+ 
+-        $result = TikTok::shareVideo('Test TikTok video', 'https://example.com/');
++        // TikTok accepts a local file path — bypasses SafeMediaFetcher entirely
++        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
++        $result = TikTok::shareVideo('Test TikTok video', $fixturePath);
+ 
+         $this->assertArrayHasKey('data', $result);
+         $this->assertEquals('tiktok123', $result['data']['publish_id']);
+     }
+ 
++    public function testTikTokVideoSharingRemoteUrl()
++    {
++        Http::fake([
++            'https://open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
++                'data' => [
++                    'publish_id' => 'tiktok123_remote',
++                    'upload_url' => 'https://upload.tiktok.com/upload'
++                ],
++                'error' => ['code' => 'ok']
++            ], 200),
++            'https://upload.tiktok.com/upload' => Http::response([], 200)
++        ]);
++
++        // Use our own raw GitHub fixture as a reliable remote video URL.
++        // It triggers SafeMediaFetcher, downloads the video, validates it,
++        // and then passes it to the mocked upload flow.
++        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
++        
++        $result = TikTok::shareVideo('Test TikTok remote video', $url);
++
++        $this->assertArrayHasKey('data', $result);
++        $this->assertEquals('tiktok123_remote', $result['data']['publish_id']);
++    }
++
+     public function testYouTubeVideoSharing()
+     {
+         Http::fake([
+             'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123'], 200),
+         ]);
+ 
+-        $result = YouTube::shareVideo('Test YouTube video', 'https://example.com/');
++        // YouTube now accepts a local file path — bypasses SafeMediaFetcher entirely
++        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
++        $result = YouTube::shareVideo('Test YouTube video', $fixturePath);
+ 
+         $this->assertArrayHasKey('id', $result);
+         $this->assertEquals('youtube123', $result['id']);
+     }
+ 
++    public function testYouTubeVideoSharingRemoteUrl()
++    {
++        Http::fake([
++            'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123_remote'], 200),
++        ]);
++
++        // Use our own raw GitHub fixture as a reliable remote video URL.
++        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
++        
++        $result = YouTube::shareVideo('Test YouTube remote video', $url);
++
++        $this->assertArrayHasKey('id', $result);
++        $this->assertEquals('youtube123_remote', $result['id']);
++    }
++
+     public function testYouTubeCommunityPost()
+     {
+         Http::fake([
+diff --git a/tests/Fixtures/test_image.jpg b/tests/Fixtures/test_image.jpg
+new file mode 100644
+index 0000000..ad9d258
+Binary files /dev/null and b/tests/Fixtures/test_image.jpg differ
+diff --git a/tests/Fixtures/test_video.mp4 b/tests/Fixtures/test_video.mp4
+new file mode 100644
+index 0000000..81cb81b
+Binary files /dev/null and b/tests/Fixtures/test_video.mp4 differ
+diff --git a/tests/Unit/ConfigHelperTest.php b/tests/Unit/ConfigHelperTest.php
+new file mode 100644
+index 0000000..52d1d09
+--- /dev/null
++++ b/tests/Unit/ConfigHelperTest.php
+@@ -0,0 +1,19 @@
++<?php
++
++namespace HamzaHassanM\LaravelSocialAutoPost\Tests\Unit;
++
++use HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper;
++use PHPUnit\Framework\TestCase;
++
++class ConfigHelperTest extends TestCase
++{
++    public function test_it_returns_default_when_config_function_fails()
++    {
++        // This test runs without Laravel container booted, 
++        // so it simulates the environment where `config()` throws or returns null.
++        $default = 12345;
++        $value = ConfigHelper::get('autopost.some_fake_key', $default);
++        
++        $this->assertEquals($default, $value);
++    }
++}

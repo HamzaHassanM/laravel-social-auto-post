@@ -254,30 +254,41 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
         
         $part3 = "\r\n--" . $delimiter . "--\r\n";
 
-        $fileStream = \GuzzleHttp\Psr7\Utils::streamFor(fopen($videoFilePath, 'rb'));
-        
-        $stream = new \GuzzleHttp\Psr7\AppendStream([
-            \GuzzleHttp\Psr7\Utils::streamFor($part1),
-            \GuzzleHttp\Psr7\Utils::streamFor($part2),
-            $fileStream,
-            \GuzzleHttp\Psr7\Utils::streamFor($part3),
-        ]);
-
-        $response = \Illuminate\Support\Facades\Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->access_token,
-            'Content-Type' => 'multipart/related; boundary=' . $delimiter,
-            'Content-Length' => $stream->getSize()
-        ])->send('POST', $uploadUrl, [
-            'body' => $stream
-        ]);
-
-        if (!$response->successful()) {
-            $errorData = $response->json();
-            $errorMessage = $errorData['error']['message'] ?? 'Unknown error occurred';
-            throw new SocialMediaException("YouTube API error: {$errorMessage}");
+        $fileHandle = fopen($videoFilePath, 'rb');
+        if ($fileHandle === false) {
+            throw new SocialMediaException("Failed to open local media file: {$videoFilePath}");
         }
 
-        return $response->json();
+        try {
+            $fileStream = \GuzzleHttp\Psr7\Utils::streamFor($fileHandle);
+            
+            $stream = new \GuzzleHttp\Psr7\AppendStream([
+                \GuzzleHttp\Psr7\Utils::streamFor($part1),
+                \GuzzleHttp\Psr7\Utils::streamFor($part2),
+                $fileStream,
+                \GuzzleHttp\Psr7\Utils::streamFor($part3),
+            ]);
+
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->access_token,
+                'Content-Type' => 'multipart/related; boundary=' . $delimiter,
+                'Content-Length' => $stream->getSize()
+            ])->send('POST', $uploadUrl, [
+                'body' => $stream
+            ]);
+
+            if (!$response->successful()) {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error']['message'] ?? 'Unknown error occurred';
+                throw new SocialMediaException("YouTube API error: {$errorMessage}");
+            }
+
+            return $response->json();
+        } finally {
+            if (is_resource($fileHandle)) {
+                fclose($fileHandle);
+            }
+        }
     }
 
     /**

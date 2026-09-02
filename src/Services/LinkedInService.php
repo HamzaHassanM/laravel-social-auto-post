@@ -353,7 +353,13 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         $asset = $registerResponse['value']['asset'];
 
         // Step 2: Upload image
-        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($imageUrl);
+        if (filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadMediaToTempFile($imageUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $imageUrl;
+            $isTemp   = false;
+        }
 
         try {
             $imageContent = file_get_contents($tempFile);
@@ -369,7 +375,7 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
                 throw new SocialMediaException('Failed to upload image to LinkedIn');
             }
         } finally {
-            if (file_exists($tempFile)) {
+            if ($isTemp && file_exists($tempFile)) {
                 @unlink($tempFile);
             }
         }
@@ -406,7 +412,13 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         $asset = $registerResponse['value']['asset'];
 
         // Step 2: Upload video
-        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($videoUrl);
+        if (filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadMediaToTempFile($videoUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $videoUrl;
+            $isTemp   = false;
+        }
 
         try {
             $videoContent = file_get_contents($tempFile);
@@ -422,7 +434,7 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
                 throw new SocialMediaException('Failed to upload video to LinkedIn');
             }
         } finally {
-            if (file_exists($tempFile)) {
+            if ($isTemp && file_exists($tempFile)) {
                 @unlink($tempFile);
             }
         }

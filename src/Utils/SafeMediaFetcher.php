@@ -252,27 +252,6 @@ class SafeMediaFetcher
         $enforceSsrfProtection = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.enforce_ssrf_protection', true);
         
         if ($enforceSsrfProtection) {
-            // Reject specific reserved/internal IPs
-            $ipLong = ip2long($resolvedIp);
-            if ($ipLong !== false) {
-                // Check 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254
-                $isLocalhost = ($ipLong & 0xFF000000) === 0x7F000000;
-                $is10Net     = ($ipLong & 0xFF000000) === 0x0A000000;
-                $is172Net    = ($ipLong & 0xFFF00000) === 0xAC100000;
-                $is192Net    = ($ipLong & 0xFFFF0000) === 0xC0A80000;
-                $isAwsMeta   = $ipLong === 0xA9FEA9FE; // 169.254.169.254
-    
-                if ($isLocalhost || $is10Net || $is172Net || $is192Net || $isAwsMeta) {
-                    throw new SocialMediaException("Security error: Hostname resolves to a private or reserved IP address ($resolvedIp).");
-                }
-            }
-    
-            // Reject IPv6 localhost and IPv4-mapped IPv6 localhost
-            if ($resolvedIp === '::1' || strpos($resolvedIp, '::ffff:127.') === 0) {
-                throw new SocialMediaException("Security error: Hostname resolves to an IPv6 localhost address.");
-            }
-        }
-        if ($enforceSsrfProtection) {
             $this->validateIpAddress($resolvedIp);
         }
         

@@ -90,11 +90,11 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
     public static function getInstance(): TwitterService
     {
         if (self::$instance === null) {
-            $bearerToken = config('autopost.twitter_bearer_token');
-            $apiKey = config('autopost.twitter_api_key');
-            $apiSecret = config('autopost.twitter_api_secret');
-            $accessToken = config('autopost.twitter_access_token');
-            $accessTokenSecret = config('autopost.twitter_access_token_secret');
+            $bearerToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_bearer_token');
+            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_key');
+            $apiSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_secret');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token');
+            $accessTokenSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token_secret');
 
             if (!$bearerToken || !$apiKey || !$apiSecret || !$accessToken || !$accessTokenSecret) {
                 throw new SocialMediaException('Twitter credentials are not properly configured.');
@@ -272,14 +272,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
         }
 
         try {
-            $maxMediaSize = 50 * 1024 * 1024;
-            try {
-                if (function_exists('config')) {
-                    $maxMediaSize = config('autopost.max_media_size', $maxMediaSize);
-                }
-            } catch (\Throwable $t) {
-                // Fallback for tests
-            }
+            $maxMediaSize = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 50 * 1024 * 1024);
             
             if (filesize($tempFile) > $maxMediaSize) {
                 throw new SocialMediaException("File size exceeds the configured maximum media size limit for Twitter upload.");

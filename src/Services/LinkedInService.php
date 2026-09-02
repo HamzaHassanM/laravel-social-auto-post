@@ -74,9 +74,9 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
     public static function getInstance(): LinkedInService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.linkedin_access_token');
-            $personUrn = config('autopost.linkedin_person_urn');
-            $organizationUrn = config('autopost.linkedin_organization_urn');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_access_token');
+            $personUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_person_urn');
+            $organizationUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_organization_urn');
 
             if (!$accessToken || !$personUrn) {
                 throw new SocialMediaException('LinkedIn credentials are not properly configured.');

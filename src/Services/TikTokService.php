@@ -73,9 +73,9 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     public static function getInstance(): TikTokService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.tiktok_access_token');
-            $clientKey = config('autopost.tiktok_client_key');
-            $clientSecret = config('autopost.tiktok_client_secret');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_access_token');
+            $clientKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_key');
+            $clientSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_secret');
 
             if (!$accessToken || !$clientKey || !$clientSecret) {
                 throw new SocialMediaException('TikTok credentials are not properly configured.');

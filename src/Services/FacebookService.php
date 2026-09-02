@@ -62,8 +62,8 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      */
     public static function getInstance() {
         if (self::$instance === null) {
-            $accessToken = config('autopost.facebook_access_token');
-            $pageId = config('autopost.facebook_page_id');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_access_token');
+            $pageId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_page_id');
             self::$instance = new self($accessToken, $pageId);
         }
         return self::$instance;
@@ -305,7 +305,7 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
      * @return string
      */
     private function buildApiUrl(string $endpoint = ''): string {
-        $apiVersion = config('autopost.facebook_api_version');
+        $apiVersion = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_api_version');
         return 'https://graph.facebook.com/' . $apiVersion . '/' . $this->page_id . '/' . $endpoint;
     }
 

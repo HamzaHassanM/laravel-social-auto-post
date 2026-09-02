@@ -74,9 +74,9 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
     public static function getInstance(): YouTubeService
     {
         if (self::$instance === null) {
-            $apiKey = config('autopost.youtube_api_key');
-            $accessToken = config('autopost.youtube_access_token');
-            $channelId = config('autopost.youtube_channel_id');
+            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_api_key');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_access_token');
+            $channelId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_channel_id');
 
             if (!$apiKey || !$accessToken || !$channelId) {
                 throw new SocialMediaException('YouTube credentials are not properly configured.');

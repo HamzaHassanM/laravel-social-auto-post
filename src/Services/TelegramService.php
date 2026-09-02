@@ -60,8 +60,8 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      */
     public static function getInstance(): TelegramService {
         if (self::$instance === null) {
-            $telegramBotToken = config('autopost.telegram_bot_token');
-            $chatId = config('autopost.telegram_chat_id');
+            $telegramBotToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_bot_token');
+            $chatId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_chat_id');
             self::$instance = new self($telegramBotToken, $chatId);
         }
         return self::$instance;
@@ -180,7 +180,7 @@ class TelegramService extends SocialMediaService implements ShareInterface,
      * @return string
      */
     private function buildApiUrl(string $endpoint): string {
-        $baseUrl = config('autopost.telegram_api_base_url');
+        $baseUrl = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.telegram_api_base_url');
         return $baseUrl . $this->telegram_bot_token . '/' . $endpoint;
     }
 }

@@ -66,8 +66,8 @@ class PinterestService extends SocialMediaService implements ShareInterface, Sha
     public static function getInstance(): PinterestService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.pinterest_access_token');
-            $boardId = config('autopost.pinterest_board_id');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.pinterest_access_token');
+            $boardId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.pinterest_board_id');
 
             if (!$accessToken || !$boardId) {
                 throw new SocialMediaException('Pinterest credentials are not properly configured.');

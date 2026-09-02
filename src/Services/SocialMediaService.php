@@ -21,8 +21,8 @@ abstract class SocialMediaService
     protected function sendRequest(string $url, string $method = 'post', array $params = [], array $headers = []): array
     {
         // Total HTTP attempts to make (including the first attempt)
-        $maxAttempts = config('autopost.retry_attempts', 3);
-        $timeout = config('autopost.timeout', 30);
+        $maxAttempts = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_attempts', 3);
+        $timeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.timeout', 30);
         
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
@@ -117,7 +117,7 @@ abstract class SocialMediaService
                     'attempt' => $attempt
                 ]);
                 
-                $backoffBase = config('autopost.retry_backoff_base', 2);
+                $backoffBase = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_backoff_base', 2);
                 sleep(pow($backoffBase, $attempt - 1));
             } catch (\Exception $e) {
                 // Non-transient or generic exceptions -> Fail Fast

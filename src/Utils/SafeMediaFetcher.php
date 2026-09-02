@@ -37,14 +37,7 @@ class SafeMediaFetcher
      */
     public static function fetch(string $url, ?int $maxBytes = null): string
     {
-        $maxBytes = $maxBytes ?? 52428800;
-        try {
-            if (function_exists('config')) {
-                $maxBytes = config('autopost.max_media_size', $maxBytes);
-            }
-        } catch (\Throwable $t) {
-            // Fallback for tests where Laravel container isn't fully booted
-        }
+        $maxBytes = $maxBytes ?? \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 52428800);
         
         $fetcher = new self($maxBytes);
         return $fetcher->execute($url);
@@ -57,12 +50,7 @@ class SafeMediaFetcher
      */
     public function execute(string $url, int $redirectCount = 0): string
     {
-        $maxRedirects = self::MAX_REDIRECTS;
-        try {
-            if (function_exists('config')) {
-                $maxRedirects = config('autopost.max_redirects', $maxRedirects);
-            }
-        } catch (\Throwable $t) {}
+        $maxRedirects = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_redirects', self::MAX_REDIRECTS);
 
         if ($redirectCount > $maxRedirects) {
             throw new SocialMediaException("Too many redirects (max " . $maxRedirects . ").");
@@ -129,21 +117,10 @@ class SafeMediaFetcher
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         // Timeouts
-        $timeout = self::TOTAL_TIMEOUT;
-        $connectTimeout = self::CONNECT_TIMEOUT;
-        $lowSpeedLimit = self::LOW_SPEED_LIMIT;
-        $lowSpeedTime = self::LOW_SPEED_TIME;
-        
-        try {
-            if (function_exists('config')) {
-                $timeout = config('autopost.timeout', $timeout);
-                $connectTimeout = config('autopost.connect_timeout', $connectTimeout);
-                $lowSpeedLimit = config('autopost.low_speed_limit', $lowSpeedLimit);
-                $lowSpeedTime = config('autopost.low_speed_time', $lowSpeedTime);
-            }
-        } catch (\Throwable $t) {
-            // Fallback for tests
-        }
+        $timeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.timeout', self::TOTAL_TIMEOUT);
+        $connectTimeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.connect_timeout', self::CONNECT_TIMEOUT);
+        $lowSpeedLimit = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.low_speed_limit', self::LOW_SPEED_LIMIT);
+        $lowSpeedTime = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.low_speed_time', self::LOW_SPEED_TIME);
         
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);

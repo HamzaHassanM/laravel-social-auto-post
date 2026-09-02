@@ -171,13 +171,8 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
             }
 
             try {
-                $videoContent = file_get_contents($tempFile);
-                if ($videoContent === false) {
-                    throw new SocialMediaException('Failed to read video file: ' . $tempFile);
-                }
-
                 $uploadUrl = $this->buildApiUrl('videos');
-                $response  = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
+                $response  = $this->uploadVideo($uploadUrl, $metadata, $tempFile);
 
                 Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
                 return $response;
@@ -236,29 +231,36 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      * @return array Response from the YouTube API.
      * @throws SocialMediaException
      */
-    private function uploadVideo(string $uploadUrl, array $metadata, string $videoContent): array
+    private function uploadVideo(string $uploadUrl, array $metadata, string $videoFilePath): array
     {
         $boundary = uniqid();
         $delimiter = '-------------' . $boundary;
         
-        $postData = '';
-        $postData .= "--" . $delimiter . "\r\n";
-        $postData .= 'Content-Disposition: form-data; name="metadata"' . "\r\n";
-        $postData .= 'Content-Type: application/json; charset=UTF-8' . "\r\n";
-        $postData .= "\r\n";
-        $postData .= json_encode($metadata) . "\r\n";
-        $postData .= "--" . $delimiter . "\r\n";
-        $postData .= 'Content-Disposition: form-data; name="video"; filename="video.mp4"' . "\r\n";
-        $postData .= 'Content-Type: video/mp4' . "\r\n";
-        $postData .= "\r\n";
-        $postData .= $videoContent . "\r\n";
-        $postData .= "--" . $delimiter . "--\r\n";
+        $part1 = "--" . $delimiter . "\r\n";
+        $part1 .= 'Content-Type: application/json; charset=UTF-8' . "\r\n\r\n";
+        $part1 .= json_encode($metadata) . "\r\n";
+        
+        $part2 = "--" . $delimiter . "\r\n";
+        $part2 .= 'Content-Type: application/octet-stream' . "\r\n\r\n";
+        
+        $part3 = "\r\n--" . $delimiter . "--\r\n";
+
+        $fileStream = \GuzzleHttp\Psr7\Utils::streamFor(fopen($videoFilePath, 'rb'));
+        
+        $stream = new \GuzzleHttp\Psr7\AppendStream([
+            \GuzzleHttp\Psr7\Utils::streamFor($part1),
+            \GuzzleHttp\Psr7\Utils::streamFor($part2),
+            $fileStream,
+            \GuzzleHttp\Psr7\Utils::streamFor($part3),
+        ]);
 
         $response = \Illuminate\Support\Facades\Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->access_token,
             'Content-Type' => 'multipart/related; boundary=' . $delimiter,
-            'Content-Length' => strlen($postData)
-        ])->post($uploadUrl, $postData);
+            'Content-Length' => $stream->getSize()
+        ])->send('POST', $uploadUrl, [
+            'body' => $stream
+        ]);
 
         if (!$response->successful()) {
             $errorData = $response->json();

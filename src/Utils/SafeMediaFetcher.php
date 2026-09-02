@@ -78,6 +78,7 @@ class SafeMediaFetcher
 
         // Prepare temp file for streaming
         if ($redirectCount === 0) {
+            $this->bytesReceived = 0;
             $this->tempFilePath = tempnam(sys_get_temp_dir(), 'social_post_media_');
             if ($this->tempFilePath === false) {
                 throw new SocialMediaException("Failed to create a temporary file for download.");

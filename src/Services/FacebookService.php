@@ -183,13 +183,15 @@ class FacebookService extends SocialMediaService implements ShareInterface, Shar
                     'video_file_chunk'  => new \CURLFile($chunkPath) // Pass the chunk as a CURLFile
                 ]);
 
-                $transferResponse = $this->sendRequest($startUrl, 'post', $params);
-                $startOffset = $transferResponse['start_offset'] ?? $endOffset;
-                $endOffset = $transferResponse['end_offset'] ?? $fileSize;
-                
-                // Clean up chunk file
-                if (file_exists($chunkPath)) {
-                    @unlink($chunkPath);
+                try {
+                    $transferResponse = $this->sendRequest($startUrl, 'post', $params);
+                    $startOffset = $transferResponse['start_offset'] ?? $endOffset;
+                    $endOffset = $transferResponse['end_offset'] ?? $fileSize;
+                } finally {
+                    // Clean up chunk file
+                    if (file_exists($chunkPath)) {
+                        @unlink($chunkPath);
+                    }
                 }
             }
 

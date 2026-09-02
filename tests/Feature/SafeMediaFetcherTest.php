@@ -149,4 +149,124 @@ class SafeMediaFetcherTest extends TestCase
         
         SafeMediaFetcher::fetch('https://httpbin.org/redirect/6');
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TDD: Bug 2 — protocol-relative redirect URL construction
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * BUG: ltrim($relativeUrl, '/') strips both slashes from "//host/path",
+     * producing "https:host/path" instead of "https://host/path".
+     *
+     * @test
+     */
+    public function test_resolves_protocol_relative_redirect_url_correctly(): void
+    {
+        $fetcher = new SafeMediaFetcher();
+        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(
+            $fetcher,
+            'https://example.com/some/path',
+            '//cdn.example.com/media/file.mp4'
+        );
+
+        $this->assertEquals(
+            'https://cdn.example.com/media/file.mp4',
+            $result,
+            'Protocol-relative redirect must produce a valid absolute URL with scheme and double-slash.'
+        );
+    }
+
+    /**
+     * Absolute redirect URL must pass through unchanged.
+     *
+     * @test
+     */
+    public function test_resolves_absolute_redirect_url_unchanged(): void
+    {
+        $fetcher = new SafeMediaFetcher();
+        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(
+            $fetcher,
+            'https://example.com/',
+            'https://other.example.com/file.mp4'
+        );
+
+        $this->assertEquals('https://other.example.com/file.mp4', $result);
+    }
+
+    /**
+     * Root-relative redirect (e.g. "/media/file.mp4") must be resolved
+     * against the origin of the base URL.
+     *
+     * @test
+     */
+    public function test_resolves_root_relative_redirect_url_correctly(): void
+    {
+        $fetcher = new SafeMediaFetcher();
+        $method  = new \ReflectionMethod(SafeMediaFetcher::class, 'resolveRelativeUrl');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(
+            $fetcher,
+            'https://example.com/some/path',
+            '/media/file.mp4'
+        );
+
+        $this->assertEquals('https://example.com/media/file.mp4', $result);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TDD: Bug 1 — redirect response body must not be prepended to final file
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * When downloading a URL that redirects to the real media, the final
+     * temp file must contain ONLY the body of the final (200) response.
+     *
+     * httpbin.org/redirect-to?url=<target>&status_code=302 returns a 302
+     * with a small HTML body, then the target.
+     * Before the fix, the HTML body was prepended to the image bytes,
+     * corrupting the file and making finfo see "text/html".
+     *
+     * We verify: MIME type of the saved file is image/jpeg (not text/html).
+     *
+     * @test
+     */
+    public function test_redirect_final_file_contains_only_target_body(): void
+    {
+        // httpbin.org/image/jpeg reliably returns a real JPEG (Content-Type: image/jpeg).
+        // httpbin.org/redirect-to?url=<target>&status_code=302 returns a 302 whose
+        // response body is a short HTML snippet — exactly what triggers Bug 1.
+        // Before the fix, the HTML body was prepended to the JPEG bytes, making
+        // finfo_file() report "text/html" instead of "image/jpeg".
+        $targetUrl   = 'https://httpbin.org/image/jpeg';
+        $redirectUrl = 'https://httpbin.org/redirect-to?url=' . urlencode($targetUrl) . '&status_code=302';
+
+        $fetcher  = new SafeMediaFetcher(1024 * 1024, []); // disable MIME check; we inspect manually
+        $tempFile = $fetcher->execute($redirectUrl);
+
+        try {
+            $this->assertFileExists($tempFile);
+
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime  = finfo_file($finfo, $tempFile);
+            finfo_close($finfo);
+
+            $this->assertEquals(
+                'image/jpeg',
+                $mime,
+                'File after redirect must be pure JPEG — not corrupted by the redirect response HTML body.'
+            );
+        } finally {
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        }
+    }
 }
+

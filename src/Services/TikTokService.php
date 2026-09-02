@@ -351,14 +351,15 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      * @param string $url The URL.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $url): void
+    private function validateInput(string $caption, string $urlOrPath): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');
         }
 
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new SocialMediaException('Invalid URL provided.');
+        // Accept a valid URL or an existing local file path (for pre-downloaded media).
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
         }
     }
 

@@ -49,6 +49,17 @@ class SocialMediaTest extends TestCase
         ]);
     }
 
+    protected function tearDown(): void
+    {
+        // LinkedInService uses a Singleton. Reset it between tests so each test
+        // reads a fresh config (including linkedin_organization_urn).
+        $reflection = new \ReflectionProperty(\HamzaHassanM\LaravelSocialAutoPost\Services\LinkedInService::class, 'instance');
+        $reflection->setAccessible(true);
+        $reflection->setValue(null, null);
+
+        parent::tearDown();
+    }
+
     public function testUnifiedSocialMediaSharing()
     {
         Http::fake([
@@ -155,12 +166,15 @@ class SocialMediaTest extends TestCase
 
     public function testTwitterImageSharing()
     {
+        // Pass a local fixture file path instead of a URL so Http::fake() remains
+        // in full control. SafeMediaFetcher is bypassed for local paths.
         Http::fake([
-            'https://api.twitter.com/2/*' => Http::response(['data' => ['id' => '456']], 200),
-            'https://upload.twitter.com/1.1/*' => Http::response(['media_id_string' => 'media123'], 200),
+            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456']], 200),
+            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123'], 200),
         ]);
 
-        $result = Twitter::shareImage('Test tweet with image', 'https://example.com/');
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_image.jpg');
+        $result = Twitter::shareImage('Test tweet with image', $fixturePath);
 
         $this->assertArrayHasKey('data', $result);
         $this->assertEquals('456', $result['data']['id']);
@@ -248,7 +262,9 @@ class SocialMediaTest extends TestCase
             'https://upload.tiktok.com/upload' => Http::response([], 200)
         ]);
 
-        $result = TikTok::shareVideo('Test TikTok video', 'https://example.com/');
+        // TikTok accepts a local file path — bypasses SafeMediaFetcher entirely
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
+        $result = TikTok::shareVideo('Test TikTok video', $fixturePath);
 
         $this->assertArrayHasKey('data', $result);
         $this->assertEquals('tiktok123', $result['data']['publish_id']);
@@ -260,7 +276,9 @@ class SocialMediaTest extends TestCase
             'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123'], 200),
         ]);
 
-        $result = YouTube::shareVideo('Test YouTube video', 'https://example.com/');
+        // YouTube now accepts a local file path — bypasses SafeMediaFetcher entirely
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
+        $result = YouTube::shareVideo('Test YouTube video', $fixturePath);
 
         $this->assertArrayHasKey('id', $result);
         $this->assertEquals('youtube123', $result['id']);

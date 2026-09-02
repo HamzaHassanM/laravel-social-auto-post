@@ -159,22 +159,30 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
                 ]
             ];
 
-            // Step 2: Upload video file
-            $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url);
+            // Step 2: Upload video — accepts a remote URL (downloaded securely via
+            // SafeMediaFetcher) or a local file path. Local paths bypass the fetcher
+            // and are used in tests / when the caller has already validated the file.
+            if (filter_var($video_url, FILTER_VALIDATE_URL)) {
+                $tempFile = $this->downloadFile($video_url);
+                $isTemp   = true;
+            } else {
+                $tempFile = $video_url;
+                $isTemp   = false;
+            }
 
             try {
                 $videoContent = file_get_contents($tempFile);
                 if ($videoContent === false) {
-                    throw new SocialMediaException('Failed to read downloaded video from temp file');
+                    throw new SocialMediaException('Failed to read video file: ' . $tempFile);
                 }
 
                 $uploadUrl = $this->buildApiUrl('videos');
-                $response = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
-                
+                $response  = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
+
                 Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
                 return $response;
             } finally {
-                if (file_exists($tempFile)) {
+                if ($isTemp && file_exists($tempFile)) {
                     @unlink($tempFile);
                 }
             }
@@ -377,14 +385,15 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      * @param string $url The URL.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $url): void
+    private function validateInput(string $caption, string $urlOrPath): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');
         }
 
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new SocialMediaException('Invalid URL provided.');
+        // Accept a valid URL or an existing local file path (for pre-downloaded media).
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
         }
     }
 

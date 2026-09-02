@@ -123,7 +123,8 @@ abstract class SocialMediaService
                 throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);
             }
         }
-        
+        // Note: every iteration either returns (2xx) or throws (4xx/429/5xx/network).
+        // This line is a safeguard that should never be reached in practice.
         throw new SocialMediaException('Request failed after all retry attempts');
     }
 

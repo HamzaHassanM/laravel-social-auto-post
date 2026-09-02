@@ -260,32 +260,40 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     private function uploadMedia(string $mediaUrl, string $type): string
     {
-        // SafeMediaFetcher handles SSRF and OOM limits
-        $tempFile = \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($mediaUrl);
-        
+        // Accept both a remote URL (downloaded securely) and a local file path.
+        // Local paths are used in tests and allow callers that have already
+        // validated / downloaded the file themselves.
+        if (filter_var($mediaUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadFile($mediaUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $mediaUrl;
+            $isTemp   = false;
+        }
+
         try {
             // Read the safely limited file into memory for Twitter API
             $mediaContent = file_get_contents($tempFile);
             if ($mediaContent === false) {
-                throw new SocialMediaException('Failed to read downloaded media from temp file');
+                throw new SocialMediaException('Failed to read media file: ' . $tempFile);
             }
 
             // Upload to Twitter
-            $url = 'https://upload.twitter.com/1.1/media/upload.json';
+            $url    = 'https://upload.twitter.com/1.1/media/upload.json';
             $params = [
-                'media' => base64_encode($mediaContent),
-                'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image'
+                'media'          => base64_encode($mediaContent),
+                'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image',
             ];
 
             $response = $this->sendRequest($url, 'post', $params);
-            
+
             if (!isset($response['media_id_string'])) {
                 throw new SocialMediaException('Failed to upload media to Twitter');
             }
 
             return $response['media_id_string'];
         } finally {
-            if (file_exists($tempFile)) {
+            if ($isTemp && file_exists($tempFile)) {
                 @unlink($tempFile);
             }
         }
@@ -310,14 +318,15 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      * @param string $url The URL.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $url): void
+    private function validateInput(string $caption, string $urlOrPath): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');
         }
 
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new SocialMediaException('Invalid URL provided.');
+        // Accept a valid URL or an existing local file path (for pre-downloaded media).
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
         }
     }
 

@@ -84,7 +84,9 @@ class SafeMediaFetcher
             }
         }
         
-        $this->fileHandle = fopen($this->tempFilePath, $redirectCount === 0 ? 'wb' : 'ab');
+        // Always truncate ('wb') so that a redirect response body from a previous
+        // iteration is never prepended to the final media bytes. (Bug fix: was 'ab')
+        $this->fileHandle = fopen($this->tempFilePath, 'wb');
         if ($this->fileHandle === false) {
             $this->cleanup();
             throw new SocialMediaException("Failed to open temporary file for writing.");
@@ -295,8 +297,12 @@ class SafeMediaFetcher
         }
 
         if (str_starts_with($relativeUrl, '//')) {
+            // Protocol-relative URL (e.g. "//cdn.example.com/file.mp4"):
+            // prepend the scheme only — do NOT strip the "//" from the path.
+            // Bug fix: ltrim($relativeUrl, '/') was removing both slashes,
+            // producing "https:cdn.example.com" instead of "https://cdn.example.com".
             $scheme = parse_url($baseUrl, PHP_URL_SCHEME);
-            return $scheme . ':' . ltrim($relativeUrl, '/');
+            return $scheme . ':' . $relativeUrl;
         }
 
         $parsedBase = parse_url($baseUrl);

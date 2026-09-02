@@ -231,7 +231,32 @@ class SafeMediaFetcher
             throw new SocialMediaException("Hostname resolved to an empty IP record.");
         }
 
-        $this->validateIpAddress($resolvedIp);
+        $enforceSsrfProtection = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.enforce_ssrf_protection', true);
+        
+        if ($enforceSsrfProtection) {
+            // Reject specific reserved/internal IPs
+            $ipLong = ip2long($resolvedIp);
+            if ($ipLong !== false) {
+                // Check 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254
+                $isLocalhost = ($ipLong & 0xFF000000) === 0x7F000000;
+                $is10Net     = ($ipLong & 0xFF000000) === 0x0A000000;
+                $is172Net    = ($ipLong & 0xFFF00000) === 0xAC100000;
+                $is192Net    = ($ipLong & 0xFFFF0000) === 0xC0A80000;
+                $isAwsMeta   = $ipLong === 0xA9FEA9FE; // 169.254.169.254
+    
+                if ($isLocalhost || $is10Net || $is172Net || $is192Net || $isAwsMeta) {
+                    throw new SocialMediaException("Security error: Hostname resolves to a private or reserved IP address ($resolvedIp).");
+                }
+            }
+    
+            // Reject IPv6 localhost and IPv4-mapped IPv6 localhost
+            if ($resolvedIp === '::1' || strpos($resolvedIp, '::ffff:127.') === 0) {
+                throw new SocialMediaException("Security error: Hostname resolves to an IPv6 localhost address.");
+            }
+        }
+        if ($enforceSsrfProtection) {
+            $this->validateIpAddress($resolvedIp);
+        }
         
         return $resolvedIp;
     }
@@ -277,27 +302,29 @@ class SafeMediaFetcher
      */
     private function validateMimeType(): void
     {
-        if (!empty($this->allowedMimeTypes)) {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = finfo_file($finfo, $this->tempFilePath);
-            finfo_close($finfo);
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = finfo_file($finfo, $this->tempFilePath);
+        finfo_close($finfo);
 
-            if ($mime === false) {
-                $this->cleanup();
-                throw new SocialMediaException("Failed to detect MIME type of downloaded file.");
-            }
+        if ($mime === false) {
+            $this->cleanup();
+            throw new SocialMediaException("Failed to detect MIME type of downloaded file.");
+        }
 
-            $allowed = false;
-            foreach ($this->allowedMimeTypes as $prefix) {
-                if (str_starts_with($mime, $prefix)) {
-                    $allowed = true;
+        $verifyMimeType = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.verify_media_mime_type', true);
+        
+        if ($verifyMimeType && !empty($this->allowedMimeTypes)) {
+            $isAllowed = false;
+            foreach ($this->allowedMimeTypes as $allowedPrefix) {
+                if (stripos($mime, $allowedPrefix) === 0) {
+                    $isAllowed = true;
                     break;
                 }
             }
-
-            if (!$allowed) {
+            
+            if (!$isAllowed) {
                 $this->cleanup();
-                throw new SocialMediaException("MIME type '{$mime}' is not allowed.");
+                throw new SocialMediaException("Security error: Downloaded file has invalid MIME type ($mime). Expected image or video.");
             }
         }
     }

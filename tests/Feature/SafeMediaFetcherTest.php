@@ -69,7 +69,7 @@ class SafeMediaFetcherTest extends TestCase
     public function test_it_rejects_dns_rebinding_to_localhost()
     {
         $this->expectException(SocialMediaException::class);
-        $this->expectExceptionMessage('Access to private or reserved IP');
+        $this->expectExceptionMessage('Security error: Hostname resolves to a private or reserved IP address');
         
         // This public DNS record is known to resolve to 127.0.0.1 for testing
         // localtest.me -> 127.0.0.1
@@ -105,7 +105,7 @@ class SafeMediaFetcherTest extends TestCase
             SafeMediaFetcher::fetch($url);
             $this->fail('Expected exception for invalid MIME type was not thrown.');
         } catch (SocialMediaException $e) {
-            $this->assertStringContainsString('is not allowed', $e->getMessage());
+            $this->assertStringContainsString('Security error: Downloaded file has invalid MIME type', $e->getMessage());
         }
     }
 

@@ -54,6 +54,10 @@ return [
     'max_redirects'     => env('SOCIAL_MEDIA_MAX_REDIRECTS', 5),
     'low_speed_limit'   => env('SOCIAL_MEDIA_LOW_SPEED_LIMIT', 1024), // 1KB/s
     'low_speed_time'    => env('SOCIAL_MEDIA_LOW_SPEED_TIME', 10),
+
+    // Security Configuration
+    'enforce_ssrf_protection' => env('SOCIAL_MEDIA_ENFORCE_SSRF_PROTECTION', true),
+    'verify_media_mime_type'  => env('SOCIAL_MEDIA_VERIFY_MIME_TYPE', true),
 ];
 
 

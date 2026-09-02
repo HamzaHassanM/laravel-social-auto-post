@@ -95,6 +95,10 @@ abstract class SocialMediaService
                 // Let our specific exceptions (RateLimit, Retryable, or 4xx Fail-fast) bubble up
                 throw $e;
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if (!$this->isTransientNetworkError($e)) {
+                    throw new SocialMediaException("Non-transient network error: " . $e->getMessage(), 0, $e);
+                }
+
                 // Transient network errors
                 if ($attempt === $maxAttempts) {
                     throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
@@ -193,5 +197,48 @@ abstract class SocialMediaService
         // SafeMediaFetcher handles URL validation, SSRF, DNS Rebinding,
         // streaming limits, timeouts, and private IP blocking.
         return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($url);
+    }
+
+    /**
+     * Determine if a ConnectionException is transient (retryable) based on cURL error codes.
+     */
+    protected function isTransientNetworkError(\Exception $e): bool
+    {
+        $message = $e->getMessage();
+        
+        // Extract cURL error code if present (Guzzle/Laravel standard format: "cURL error XX: ...")
+        if (preg_match('/cURL error (\d+):/', $message, $matches)) {
+            $curlErrorCode = (int) $matches[1];
+            
+            // Known transient cURL errors:
+            // 28: CURLE_OPERATION_TIMEDOUT (Timeout)
+            // 7: CURLE_COULDNT_CONNECT (Connection refused - might be temporary)
+            // 52: CURLE_GOT_NOTHING (Empty reply from server)
+            // 56: CURLE_RECV_ERROR (Failure in receiving network data)
+            $transientCodes = [28, 7, 52, 56];
+            
+            // Known NON-transient cURL errors:
+            // 6: CURLE_COULDNT_RESOLVE_HOST (DNS failure)
+            // 3: CURLE_URL_MALFORMAT (Malformed URL)
+            // 35, 51, 58, 60, 77: SSL/TLS related errors
+            $nonTransientCodes = [6, 3, 35, 51, 58, 60, 77];
+            
+            if (in_array($curlErrorCode, $nonTransientCodes, true)) {
+                return false; // Definitely not transient
+            }
+            
+            if (in_array($curlErrorCode, $transientCodes, true)) {
+                return true; // Definitely transient
+            }
+        }
+        
+        // Fallback: Check if the message contains timeout-related keywords
+        $lowerMessage = strtolower($message);
+        if (str_contains($lowerMessage, 'timeout') || str_contains($lowerMessage, 'timed out')) {
+            return true;
+        }
+        
+        // By default, assume non-transient to prevent retry amplification on unknown errors
+        return false;
     }
 }

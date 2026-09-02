@@ -149,4 +149,52 @@ class SocialMediaServiceRetryTest extends TestCase
             $this->assertStringContainsString('Request failed unexpectedly: Malformed configuration', $e->getMessage());
         }
     }
+
+    public function test_non_transient_curl_dns_error_fails_fast_without_retrying()
+    {
+        Http::fake([
+            '*' => function (Request $request) {
+                // cURL error 6 is CURLE_COULDNT_RESOLVE_HOST
+                throw new ConnectionException('cURL error 6: Could not resolve host: api.example.com');
+            },
+        ]);
+
+        $service = new TestableSocialMediaService();
+
+        $start = microtime(true);
+        try {
+            $service->publicSendRequest('https://api.example.com/post');
+            $this->fail('Expected exception was not thrown.');
+        } catch (SocialMediaException $e) {
+            $this->assertNotInstanceOf(RetryableException::class, $e);
+            $this->assertStringContainsString('Non-transient network error', $e->getMessage());
+        }
+        $duration = microtime(true) - $start;
+
+        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
+    }
+
+    public function test_non_transient_curl_ssl_error_fails_fast_without_retrying()
+    {
+        Http::fake([
+            '*' => function (Request $request) {
+                // cURL error 35 is CURLE_SSL_CONNECT_ERROR
+                throw new ConnectionException('cURL error 35: SSL connect error');
+            },
+        ]);
+
+        $service = new TestableSocialMediaService();
+
+        $start = microtime(true);
+        try {
+            $service->publicSendRequest('https://api.example.com/post');
+            $this->fail('Expected exception was not thrown.');
+        } catch (SocialMediaException $e) {
+            $this->assertNotInstanceOf(RetryableException::class, $e);
+            $this->assertStringContainsString('Non-transient network error', $e->getMessage());
+        }
+        $duration = microtime(true) - $start;
+
+        $this->assertLessThan(0.5, $duration, 'Execution should be fast (no sleep).');
+    }
 }

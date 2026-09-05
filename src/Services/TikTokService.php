@@ -73,9 +73,9 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
     public static function getInstance(): TikTokService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.tiktok_access_token');
-            $clientKey = config('autopost.tiktok_client_key');
-            $clientSecret = config('autopost.tiktok_client_secret');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_access_token');
+            $clientKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_key');
+            $clientSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.tiktok_client_secret');
 
             if (!$accessToken || !$clientKey || !$clientSecret) {
                 throw new SocialMediaException('TikTok credentials are not properly configured.');
@@ -110,7 +110,7 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateTextUrl($caption, $image_url);
         
         try {
             $url = $this->buildApiUrl('post/publish/content/init/');
@@ -148,13 +148,21 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
+        $video_path = filter_var($video_url, FILTER_VALIDATE_URL)
+            ? \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($video_url)
+            : $video_url;
+
         try {
+            if (!file_exists($video_path)) {
+                throw new SocialMediaException('Failed to download video or file does not exist.');
+            }
+
             // Check if we should use FILE_UPLOAD or PULL_FROM_URL. 
             // For general public URLs, PULL_FROM_URL requires a verified domain,
             // so using FILE_UPLOAD with chunking is generally safer for a package.
-            $sourceInfo = $this->buildFileUploadSourceInfo($video_url);
+            $sourceInfo = $this->buildFileUploadSourceInfo($video_path);
 
             $url = $this->buildApiUrl('post/publish/video/init/');
             $params = [
@@ -177,13 +185,17 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
                 throw new SocialMediaException('TikTok did not return an upload_url.');
             }
 
-            $this->uploadVideoChunks($video_url, $uploadUrl);
+            $this->uploadVideoChunks($video_path, $uploadUrl);
 
             Log::info('TikTok video upload initialized', compact('publishId'));
             return $initResponse;
         } catch (\Exception $e) {
             Log::error('Failed to share video to TikTok', ['error' => $e->getMessage()]);
             throw new SocialMediaException('Failed to share video to TikTok: ' . $e->getMessage());
+        } finally {
+            if ($video_path !== $video_url && file_exists($video_path)) {
+                @unlink($video_path);
+            }
         }
     }
 
@@ -262,29 +274,12 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      * @return array<string, mixed>
      * @throws SocialMediaException
      */
-    private function buildFileUploadSourceInfo(string $videoUrl): array
+    private function buildFileUploadSourceInfo(string $videoPath): array
     {
-        $headers = @get_headers($videoUrl, true);
-        
-        // Handle array responses for redirected headers
-        $contentLength = $headers['Content-Length'] ?? $headers['content-length'] ?? 0;
-        if (is_array($contentLength)) {
-            $contentLength = end($contentLength);
-        }
-        
-        $videoSize = (int) $contentLength;
+        $videoSize = filesize($videoPath);
 
-        if ($videoSize === 0) {
-            // Fallback if headers fail or don't provide Content-Length
-            $content = @file_get_contents($videoUrl, false, null, 0, 1024);
-            if ($content === false) {
-                throw new SocialMediaException('Could not determine video file size or download video.');
-            }
-            
-            // Need full size
-            $fullContent = file_get_contents($videoUrl);
-            $videoSize = strlen($fullContent);
-            unset($fullContent);
+        if ($videoSize === false || $videoSize === 0) {
+            throw new SocialMediaException('Could not determine video file size.');
         }
 
         $chunkSize = 10 * 1024 * 1024; // 10 MB per chunk
@@ -303,49 +298,53 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
      * 
      * @throws SocialMediaException
      */
-    private function uploadVideoChunks(string $videoUrl, string $uploadUrl): void
+    private function uploadVideoChunks(string $videoPath, string $uploadUrl): void
     {
-        $videoContent = @file_get_contents($videoUrl);
-
-        if ($videoContent === false) {
-            throw new SocialMediaException("Failed to download video from: {$videoUrl}");
+        $totalSize = filesize($videoPath);
+        if ($totalSize === false) {
+            throw new SocialMediaException("Failed to read video file size.");
         }
 
-        $totalSize = strlen($videoContent);
+        $fileHandle = fopen($videoPath, 'rb');
+        if ($fileHandle === false) {
+            throw new SocialMediaException("Failed to open video file for reading.");
+        }
+
         $chunkSize = 10 * 1024 * 1024;
         $offset = 0;
         $chunkIndex = 0;
 
-        while ($offset < $totalSize) {
-            $chunk = substr($videoContent, $offset, $chunkSize);
-            $chunkLength = strlen($chunk);
-            $end = $offset + $chunkLength - 1;
+        try {
+            while ($offset < $totalSize) {
+                $chunk = fread($fileHandle, $chunkSize);
+                if ($chunk === false || $chunk === '') {
+                    throw new SocialMediaException("Failed to read chunk from video file.");
+                }
+                
+                $chunkLength = strlen($chunk);
+                $end = $offset + $chunkLength - 1;
 
-            $response = Http::timeout(120)
-                ->withHeaders([
-                    'Content-Type' => 'video/mp4',
-                    'Content-Length' => $chunkLength,
-                    'Content-Range' => "bytes {$offset}-{$end}/{$totalSize}",
-                ])
-                ->put($uploadUrl, $chunk);
+                $response = Http::timeout(120)
+                    ->withHeaders([
+                        'Content-Type' => 'video/mp4',
+                        'Content-Length' => $chunkLength,
+                        'Content-Range' => "bytes {$offset}-{$end}/{$totalSize}",
+                    ])
+                    ->put($uploadUrl, $chunk);
 
-            if (!$response->successful()) {
-                throw new SocialMediaException("Failed to upload chunk {$chunkIndex}: {$response->body()}");
+                if (!$response->successful()) {
+                    throw new SocialMediaException("Failed to upload chunk {$chunkIndex}: {$response->body()}");
+                }
+
+                $offset += $chunkLength;
+                $chunkIndex++;
             }
-
-            $offset += $chunkLength;
-            $chunkIndex++;
+        } finally {
+            fclose($fileHandle);
         }
     }
 
-    /**
-     * Validate input parameters.
-     *
-     * @param string $caption The caption text.
-     * @param string $url The URL.
-     * @throws SocialMediaException
-     */
-    private function validateInput(string $caption, string $url): void
+    private function validateTextUrl(string $caption, string $url): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');
@@ -353,6 +352,25 @@ class TikTokService extends SocialMediaService implements ShareInterface, ShareI
 
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
             throw new SocialMediaException('Invalid URL provided.');
+        }
+    }
+
+    /**
+     * Validate the input for media uploads (accepts URL or local path).
+     *
+     * @param string $caption The caption.
+     * @param string $urlOrPath The media URL or file path.
+     * @throws SocialMediaException
+     */
+    private function validateMediaInput(string $caption, string $urlOrPath): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+
+        // Accept a valid URL or an existing local file path (for pre-downloaded media).
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
         }
     }
 

@@ -74,9 +74,9 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
     public static function getInstance(): YouTubeService
     {
         if (self::$instance === null) {
-            $apiKey = config('autopost.youtube_api_key');
-            $accessToken = config('autopost.youtube_access_token');
-            $channelId = config('autopost.youtube_channel_id');
+            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_api_key');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_access_token');
+            $channelId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.youtube_channel_id');
 
             if (!$apiKey || !$accessToken || !$channelId) {
                 throw new SocialMediaException('YouTube credentials are not properly configured.');
@@ -98,7 +98,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function share(string $caption, string $url): array
     {
-        $this->validateInput($caption, $url);
+        $this->validateTextUrl($caption, $url);
         
         try {
             // YouTube doesn't support direct text posts
@@ -121,7 +121,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateTextUrl($caption, $image_url);
         
         try {
             // YouTube doesn't support direct image posts
@@ -143,7 +143,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
         try {
             // Step 1: Upload video metadata
@@ -159,17 +159,37 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
                 ]
             ];
 
-            // Step 2: Upload video file
-            $videoContent = file_get_contents($video_url);
-            if ($videoContent === false) {
-                throw new SocialMediaException('Failed to download video from URL: ' . $video_url);
+            // Step 2: Upload video — accepts a remote URL (downloaded securely via
+            // SafeMediaFetcher) or a local file path. Local paths bypass the fetcher
+            // Use the new secure fetcher, falling back to local file if it's already a path.
+            if (filter_var($video_url, FILTER_VALIDATE_URL)) {
+                $tempFile = $this->downloadMediaToTempFile($video_url);
+                $isTemp   = true;
+            } else {
+                $tempFile = $video_url;
+                $isTemp   = false;
+                
+                if (!is_file($tempFile) || !is_readable($tempFile)) {
+                    throw new SocialMediaException("Invalid or unreadable local media file.");
+                }
+                
+                $maxSize = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 10485760);
+                if (filesize($tempFile) > $maxSize) {
+                    throw new SocialMediaException("File size exceeded the limit of {$maxSize} bytes.");
+                }
             }
 
-            $uploadUrl = $this->buildApiUrl('videos');
-            $response = $this->uploadVideo($uploadUrl, $metadata, $videoContent);
-            
-            Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
-            return $response;
+            try {
+                $uploadUrl = $this->buildApiUrl('videos');
+                $response  = $this->uploadVideo($uploadUrl, $metadata, $tempFile);
+
+                Log::info('YouTube video post shared successfully', ['video_id' => $response['id'] ?? null]);
+                return $response;
+            } finally {
+                if ($isTemp && file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
         } catch (\Exception $e) {
             Log::error('Failed to share video to YouTube', ['error' => $e->getMessage()]);
             throw new SocialMediaException('Failed to share video to YouTube: ' . $e->getMessage());
@@ -216,41 +236,59 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
      *
      * @param string $uploadUrl The YouTube upload URL.
      * @param array $metadata The video metadata.
-     * @param string $videoContent The video content.
+     * @param string $videoFilePath The path to the video file to upload.
      * @return array Response from the YouTube API.
      * @throws SocialMediaException
      */
-    private function uploadVideo(string $uploadUrl, array $metadata, string $videoContent): array
+    private function uploadVideo(string $uploadUrl, array $metadata, string $videoFilePath): array
     {
         $boundary = uniqid();
         $delimiter = '-------------' . $boundary;
         
-        $postData = '';
-        $postData .= "--" . $delimiter . "\r\n";
-        $postData .= 'Content-Disposition: form-data; name="metadata"' . "\r\n";
-        $postData .= 'Content-Type: application/json; charset=UTF-8' . "\r\n";
-        $postData .= "\r\n";
-        $postData .= json_encode($metadata) . "\r\n";
-        $postData .= "--" . $delimiter . "\r\n";
-        $postData .= 'Content-Disposition: form-data; name="video"; filename="video.mp4"' . "\r\n";
-        $postData .= 'Content-Type: video/mp4' . "\r\n";
-        $postData .= "\r\n";
-        $postData .= $videoContent . "\r\n";
-        $postData .= "--" . $delimiter . "--\r\n";
+        $part1 = "--" . $delimiter . "\r\n";
+        $part1 .= 'Content-Type: application/json; charset=UTF-8' . "\r\n\r\n";
+        $part1 .= json_encode($metadata) . "\r\n";
+        
+        $part2 = "--" . $delimiter . "\r\n";
+        $part2 .= 'Content-Type: application/octet-stream' . "\r\n\r\n";
+        
+        $part3 = "\r\n--" . $delimiter . "--\r\n";
 
-        $response = \Illuminate\Support\Facades\Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->access_token,
-            'Content-Type' => 'multipart/related; boundary=' . $delimiter,
-            'Content-Length' => strlen($postData)
-        ])->post($uploadUrl, $postData);
-
-        if (!$response->successful()) {
-            $errorData = $response->json();
-            $errorMessage = $errorData['error']['message'] ?? 'Unknown error occurred';
-            throw new SocialMediaException("YouTube API error: {$errorMessage}");
+        $fileHandle = fopen($videoFilePath, 'rb');
+        if ($fileHandle === false) {
+            throw new SocialMediaException("Failed to open local media file: {$videoFilePath}");
         }
 
-        return $response->json();
+        try {
+            $fileStream = \GuzzleHttp\Psr7\Utils::streamFor($fileHandle);
+            
+            $stream = new \GuzzleHttp\Psr7\AppendStream([
+                \GuzzleHttp\Psr7\Utils::streamFor($part1),
+                \GuzzleHttp\Psr7\Utils::streamFor($part2),
+                $fileStream,
+                \GuzzleHttp\Psr7\Utils::streamFor($part3),
+            ]);
+
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->access_token,
+                'Content-Type' => 'multipart/related; boundary=' . $delimiter,
+                'Content-Length' => $stream->getSize()
+            ])->send('POST', $uploadUrl, [
+                'body' => $stream
+            ]);
+
+            if (!$response->successful()) {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error']['message'] ?? 'Unknown error occurred';
+                throw new SocialMediaException("YouTube API error: {$errorMessage}");
+            }
+
+            return $response->json();
+        } finally {
+            if (is_resource($fileHandle)) {
+                fclose($fileHandle);
+            }
+        }
     }
 
     /**
@@ -362,14 +400,7 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
         return array_slice($tags, 0, 15);
     }
 
-    /**
-     * Validate input parameters.
-     *
-     * @param string $caption The caption text.
-     * @param string $url The URL.
-     * @throws SocialMediaException
-     */
-    private function validateInput(string $caption, string $url): void
+    private function validateTextUrl(string $caption, string $url): void
     {
         if (empty(trim($caption))) {
             throw new SocialMediaException('Caption cannot be empty.');
@@ -377,6 +408,25 @@ class YouTubeService extends SocialMediaService implements ShareInterface, Share
 
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
             throw new SocialMediaException('Invalid URL provided.');
+        }
+    }
+
+    /**
+     * Validate the input for media uploads (accepts URL or local path).
+     *
+     * @param string $caption The caption.
+     * @param string $urlOrPath The media URL or file path.
+     * @throws SocialMediaException
+     */
+    private function validateMediaInput(string $caption, string $urlOrPath): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+
+        // Accept a valid URL or an existing local file path (for pre-downloaded media).
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
         }
     }
 

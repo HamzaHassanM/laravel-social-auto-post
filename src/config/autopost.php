@@ -45,7 +45,19 @@ return [
     'default_platforms' => ['facebook', 'twitter', 'linkedin'],
     'enable_logging'    => env('SOCIAL_MEDIA_LOGGING', true),
     'timeout'           => env('SOCIAL_MEDIA_TIMEOUT', 30),
+    'connect_timeout'   => env('SOCIAL_MEDIA_CONNECT_TIMEOUT', 10),
     'retry_attempts'    => env('SOCIAL_MEDIA_RETRY_ATTEMPTS', 3),
+    'retry_backoff_base'=> env('SOCIAL_MEDIA_RETRY_BACKOFF_BASE', 2),
+    
+    // Media Configuration
+    'max_media_size'    => env('SOCIAL_MEDIA_MAX_MEDIA_SIZE', 50 * 1024 * 1024), // 50MB default
+    'max_redirects'     => env('SOCIAL_MEDIA_MAX_REDIRECTS', 5),
+    'low_speed_limit'   => env('SOCIAL_MEDIA_LOW_SPEED_LIMIT', 1024), // 1KB/s
+    'low_speed_time'    => env('SOCIAL_MEDIA_LOW_SPEED_TIME', 10),
+
+    // Security Configuration
+    'enforce_ssrf_protection' => env('SOCIAL_MEDIA_ENFORCE_SSRF_PROTECTION', true),
+    'verify_media_mime_type'  => env('SOCIAL_MEDIA_VERIFY_MIME_TYPE', true),
 ];
 
 

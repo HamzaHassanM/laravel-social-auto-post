@@ -60,12 +60,31 @@ try {
 
 ## Lógica de Reintento (Retry Logic)
 
-El paquete reintenta automáticamente las solicitudes fallidas con un retroceso exponencial (exponential backoff). Configura esto en `config/autopost.php` o dinámicamente:
+El paquete distingue entre errores persistentes (4xx) y errores temporales (5xx, tiempo de espera de la red). Las llamadas a la API fallidas con 4xx fallarán rápidamente (fail-fast), mientras que los errores 5xx y de red se reintentan automáticamente con un retroceso exponencial.
+
+Configura esto en `config/autopost.php` o dinámicamente:
 
 ```php
-// Configurar intentos de reintento
+// Configurar el número de intentos de reintento
 config(['autopost.retry_attempts' => 5]);
 
-// Configurar tiempo de espera
+// Configurar la base del retroceso exponencial (ej. 2 para 2s, 4s, 8s)
+config(['autopost.retry_backoff_base' => 2]);
+
+// Configurar tiempo de espera (Timeout)
 config(['autopost.timeout' => 60]);
+```
+
+## Seguridad (SSRF Protection)
+
+Al descargar medios desde URLs remotas, el paquete utiliza `SafeMediaFetcher` para prevenir falsificación de peticiones del lado del servidor (SSRF) y ataques de revinculación DNS. Resuelve el nombre de host y se asegura de que no apunte a IPs privadas, reservadas o de bucle local (loopback) antes de obtener el archivo.
+
+Configura los límites de seguridad en `config/autopost.php`:
+
+```php
+// Habilitar o deshabilitar protección SSRF
+config(['autopost.enforce_ssrf_protection' => true]);
+
+// Establecer tamaño máximo de medios permitido en bytes (ej. 10MB)
+config(['autopost.max_media_size' => 10485760]);
 ```

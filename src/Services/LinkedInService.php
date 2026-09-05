@@ -74,9 +74,9 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
     public static function getInstance(): LinkedInService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.linkedin_access_token');
-            $personUrn = config('autopost.linkedin_person_urn');
-            $organizationUrn = config('autopost.linkedin_organization_urn');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_access_token');
+            $personUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_person_urn');
+            $organizationUrn = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.linkedin_organization_urn');
 
             if (!$accessToken || !$personUrn) {
                 throw new SocialMediaException('LinkedIn credentials are not properly configured.');
@@ -353,17 +353,31 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         $asset = $registerResponse['value']['asset'];
 
         // Step 2: Upload image
-        $imageContent = file_get_contents($imageUrl);
-        if ($imageContent === false) {
-            throw new SocialMediaException('Failed to download image from URL: ' . $imageUrl);
+        if (filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadMediaToTempFile($imageUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $imageUrl;
+            $isTemp   = false;
         }
 
-        $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->access_token
-        ])->put($uploadUrl, $imageContent);
+        try {
+            $imageContent = file_get_contents($tempFile);
+            if ($imageContent === false) {
+                throw new SocialMediaException('Failed to read downloaded image from temp file');
+            }
 
-        if (!$uploadResponse->successful()) {
-            throw new SocialMediaException('Failed to upload image to LinkedIn');
+            $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->access_token
+            ])->put($uploadUrl, $imageContent);
+
+            if (!$uploadResponse->successful()) {
+                throw new SocialMediaException('Failed to upload image to LinkedIn');
+            }
+        } finally {
+            if ($isTemp && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
         }
 
         return $asset;
@@ -398,17 +412,31 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         $asset = $registerResponse['value']['asset'];
 
         // Step 2: Upload video
-        $videoContent = file_get_contents($videoUrl);
-        if ($videoContent === false) {
-            throw new SocialMediaException('Failed to download video from URL: ' . $videoUrl);
+        if (filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadMediaToTempFile($videoUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $videoUrl;
+            $isTemp   = false;
         }
 
-        $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->access_token
-        ])->put($uploadUrl, $videoContent);
+        try {
+            $videoContent = file_get_contents($tempFile);
+            if ($videoContent === false) {
+                throw new SocialMediaException('Failed to read downloaded video from temp file');
+            }
 
-        if (!$uploadResponse->successful()) {
-            throw new SocialMediaException('Failed to upload video to LinkedIn');
+            $uploadResponse = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->access_token
+            ])->put($uploadUrl, $videoContent);
+
+            if (!$uploadResponse->successful()) {
+                throw new SocialMediaException('Failed to upload video to LinkedIn');
+            }
+        } finally {
+            if ($isTemp && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
         }
 
         return $asset;

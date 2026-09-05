@@ -49,6 +49,17 @@ class SocialMediaTest extends TestCase
         ]);
     }
 
+    protected function tearDown(): void
+    {
+        // LinkedInService uses a Singleton. Reset it between tests so each test
+        // reads a fresh config (including linkedin_organization_urn).
+        $reflection = new \ReflectionProperty(\HamzaHassanM\LaravelSocialAutoPost\Services\LinkedInService::class, 'instance');
+        $reflection->setAccessible(true);
+        $reflection->setValue(null, null);
+
+        parent::tearDown();
+    }
+
     public function testUnifiedSocialMediaSharing()
     {
         Http::fake([
@@ -155,15 +166,48 @@ class SocialMediaTest extends TestCase
 
     public function testTwitterImageSharing()
     {
+        // Pass a local fixture file path instead of a URL so Http::fake() remains
+        // in full control. SafeMediaFetcher is bypassed for local paths.
         Http::fake([
-            'https://api.twitter.com/2/*' => Http::response(['data' => ['id' => '456']], 200),
-            'https://upload.twitter.com/1.1/*' => Http::response(['media_id_string' => 'media123'], 200),
+            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456']], 200),
+            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123'], 200),
         ]);
 
-        $result = Twitter::shareImage('Test tweet with image', 'https://example.com/');
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_image.jpg');
+        $result = Twitter::shareImage('Test tweet with image', $fixturePath);
 
         $this->assertArrayHasKey('data', $result);
         $this->assertEquals('456', $result['data']['id']);
+    }
+
+    public function testTwitterImageSharingRemoteUrl()
+    {
+        // This tests that SafeMediaFetcher correctly downloads a remote file 
+        // before passing it to the service's upload mechanism (which is mocked).
+        Http::fake([
+            'https://api.twitter.com/2/*'         => Http::response(['data' => ['id' => '456_remote']], 200),
+            'https://upload.twitter.com/1.1/*'    => Http::response(['media_id_string' => 'media123_remote'], 200),
+        ]);
+
+        // A public URL that returns a small valid JPEG
+        $url = 'https://httpbin.org/image/jpeg';
+        
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_image.jpg');
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = function($fetchUrl) use ($url, $fixturePath) {
+            if ($fetchUrl === $url) {
+                $tempPath = sys_get_temp_dir() . '/' . uniqid('mock_') . '.jpg';
+                copy($fixturePath, $tempPath);
+                return $tempPath;
+            }
+            throw new \Exception("Unexpected URL fetched: $fetchUrl");
+        };
+        
+        $result = Twitter::shareImage('Test tweet with remote image', $url);
+
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals('456_remote', $result['data']['id']);
+        
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = null;
     }
 
     public function testTwitterTimeline()
@@ -248,10 +292,36 @@ class SocialMediaTest extends TestCase
             'https://upload.tiktok.com/upload' => Http::response([], 200)
         ]);
 
-        $result = TikTok::shareVideo('Test TikTok video', 'https://example.com/');
+        // TikTok accepts a local file path — bypasses SafeMediaFetcher entirely
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
+        $result = TikTok::shareVideo('Test TikTok video', $fixturePath);
 
         $this->assertArrayHasKey('data', $result);
         $this->assertEquals('tiktok123', $result['data']['publish_id']);
+    }
+
+    public function testTikTokVideoSharingRemoteUrl()
+    {
+        Http::fake([
+            'https://open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
+                'data' => [
+                    'publish_id' => 'tiktok123_remote',
+                    'upload_url' => 'https://upload.tiktok.com/upload'
+                ],
+                'error' => ['code' => 'ok']
+            ], 200),
+            'https://upload.tiktok.com/upload' => Http::response([], 200)
+        ]);
+
+        // Use our own raw GitHub fixture as a reliable remote video URL.
+        // It triggers SafeMediaFetcher, downloads the video, validates it,
+        // and then passes it to the mocked upload flow.
+        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
+        
+        $result = TikTok::shareVideo('Test TikTok remote video', $url);
+
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals('tiktok123_remote', $result['data']['publish_id']);
     }
 
     public function testYouTubeVideoSharing()
@@ -260,10 +330,38 @@ class SocialMediaTest extends TestCase
             'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123'], 200),
         ]);
 
-        $result = YouTube::shareVideo('Test YouTube video', 'https://example.com/');
+        // YouTube now accepts a local file path — bypasses SafeMediaFetcher entirely
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
+        $result = YouTube::shareVideo('Test YouTube video', $fixturePath);
 
         $this->assertArrayHasKey('id', $result);
         $this->assertEquals('youtube123', $result['id']);
+    }
+
+    public function testYouTubeVideoSharingRemoteUrl()
+    {
+        Http::fake([
+            'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123_remote'], 200),
+        ]);
+
+        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
+        
+        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = function($fetchUrl) use ($url, $fixturePath) {
+            if ($fetchUrl === $url) {
+                $tempPath = sys_get_temp_dir() . '/' . uniqid('mock_') . '.mp4';
+                copy($fixturePath, $tempPath);
+                return $tempPath;
+            }
+            throw new \Exception("Unexpected URL fetched: $fetchUrl");
+        };
+        
+        $result = YouTube::shareVideo('Test YouTube remote video', $url);
+
+        $this->assertArrayHasKey('id', $result);
+        $this->assertEquals('youtube123_remote', $result['id']);
+        
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = null;
     }
 
     public function testYouTubeCommunityPost()

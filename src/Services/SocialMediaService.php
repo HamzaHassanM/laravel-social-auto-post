@@ -20,10 +20,11 @@ abstract class SocialMediaService
      */
     protected function sendRequest(string $url, string $method = 'post', array $params = [], array $headers = []): array
     {
-        $maxRetries = config('autopost.retry_attempts', 3);
-        $timeout = config('autopost.timeout', 30);
+        // Total HTTP attempts to make (including the first attempt)
+        $maxAttempts = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_attempts', 3);
+        $timeout = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.timeout', 30);
         
-        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
                 $response = Http::timeout($timeout)
                     ->withHeaders($headers)
@@ -31,27 +32,50 @@ abstract class SocialMediaService
 
                 if (!$response->successful()) {
                     $errorMessage = $this->extractErrorMessage($response);
+                    $status = $response->status();
+
+                    // 429 Too Many Requests -> RateLimitException (No retry loop)
+                    if ($status === 429) {
+                        $retryAfter = $response->header('Retry-After');
+                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RateLimitException(
+                            "Rate limit exceeded: {$errorMessage}",
+                            $retryAfter
+                        );
+                    }
+
+                    // 4xx Client Errors (except 429) -> Fail Fast (No retry loop)
+                    if ($status >= 400 && $status < 500) {
+                        throw new SocialMediaException("API request failed: {$errorMessage}");
+                    }
                     
-                    if ($attempt === $maxRetries) {
+                    // 5xx Server Errors -> Retryable
+                    if ($attempt === $maxAttempts) {
                         Log::error('Social media API request failed after all retries', [
                             'url' => $url,
                             'method' => $method,
-                            'status' => $response->status(),
+                            'status' => $status,
                             'error' => $errorMessage,
                             'attempts' => $attempt
                         ]);
                         
-                        throw new SocialMediaException("API request failed: {$errorMessage}");
+                        throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
+                            "API request failed: {$errorMessage}",
+                            0,
+                            null,
+                            null,
+                            $status,
+                            $attempt
+                        );
                     }
                     
-                    Log::warning('Social media API request failed, retrying', [
+                    Log::warning('Social media API request failed with 5xx, retrying', [
                         'url' => $url,
-                        'status' => $response->status(),
+                        'status' => $status,
                         'error' => $errorMessage,
                         'attempt' => $attempt
                     ]);
                     
-                    // Wait before retry (exponential backoff)
+                    // Bounded backoff for 5xx only
                     sleep(pow(2, $attempt - 1));
                     continue;
                 }
@@ -67,29 +91,41 @@ abstract class SocialMediaService
                 
                 return $data;
                 
-            } catch (\Exception $e) {
-                if ($attempt === $maxRetries) {
-                    Log::error('Social media API request failed with exception', [
-                        'url' => $url,
-                        'method' => $method,
-                        'error' => $e->getMessage(),
-                        'attempts' => $attempt
-                    ]);
-                    
-                    throw new SocialMediaException("Request failed: " . $e->getMessage());
+            } catch (\HamzaHassanM\LaravelSocialAutoPost\Exceptions\SocialMediaException $e) {
+                // Let our specific exceptions (RateLimit, Retryable, or 4xx Fail-fast) bubble up
+                throw $e;
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if (!$this->isTransientNetworkError($e)) {
+                    throw new SocialMediaException("Non-transient network error: " . $e->getMessage(), 0, $e);
+                }
+
+                // Transient network errors
+                if ($attempt === $maxAttempts) {
+                    throw new \HamzaHassanM\LaravelSocialAutoPost\Exceptions\RetryableException(
+                        "Network/Connection error after {$attempt} attempts: " . $e->getMessage(),
+                        0,
+                        $e,
+                        null,
+                        null,
+                        $attempt
+                    );
                 }
                 
-                Log::warning('Social media API request failed with exception, retrying', [
+                Log::warning('Social media API connection failed, retrying', [
                     'url' => $url,
                     'error' => $e->getMessage(),
                     'attempt' => $attempt
                 ]);
                 
-                // Wait before retry
-                sleep(pow(2, $attempt - 1));
+                $backoffBase = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_backoff_base', 2);
+                sleep(pow($backoffBase, $attempt - 1));
+            } catch (\Exception $e) {
+                // Non-transient or generic exceptions -> Fail Fast
+                throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);
             }
         }
-        
+        // Note: every iteration either returns (2xx) or throws (4xx/429/5xx/network).
+        // This line is a safeguard that should never be reached in practice.
         throw new SocialMediaException('Request failed after all retry attempts');
     }
 
@@ -150,29 +186,85 @@ abstract class SocialMediaService
     }
 
     /**
+     * Download file from URL securely using SafeMediaFetcher.
+     * Note: This returns a temporary local file path. It is the caller's responsibility
+     * to ensure the file is cleaned up after use.
+     *
+     * @param string $url The file URL.
+     * @return string The local path to the downloaded file.
+     * @throws SocialMediaException
+     */
+    protected function downloadMediaToTempFile(string $url): string
+    {
+        // SafeMediaFetcher handles URL validation, SSRF, DNS Rebinding,
+        // streaming limits, timeouts, and private IP blocking.
+        return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($url);
+    }
+
+    /**
      * Download file from URL with error handling.
      *
+     * @deprecated Use downloadMediaToTempFile() instead to avoid high memory consumption.
      * @param string $url The file URL.
      * @return string The downloaded file content.
      * @throws SocialMediaException
      */
     protected function downloadFile(string $url): string
     {
-        $this->validateUrl($url);
+        $tempPath = $this->downloadMediaToTempFile($url);
+        $content = file_get_contents($tempPath);
         
-        $context = stream_context_create([
-            'http' => [
-                'timeout' => config('autopost.timeout', 30),
-                'user_agent' => 'Laravel Social Auto Post Package'
-            ]
-        ]);
-        
-        $content = file_get_contents($url, false, $context);
+        if (file_exists($tempPath)) {
+            @unlink($tempPath);
+        }
         
         if ($content === false) {
             throw new SocialMediaException('Failed to download file from URL: ' . $url);
         }
         
         return $content;
+    }
+
+    /**
+     * Determine if a ConnectionException is transient (retryable) based on cURL error codes.
+     */
+    protected function isTransientNetworkError(\Exception $e): bool
+    {
+        $message = $e->getMessage();
+        
+        // Extract cURL error code if present (Guzzle/Laravel standard format: "cURL error XX: ...")
+        if (preg_match('/cURL error (\d+):/', $message, $matches)) {
+            $curlErrorCode = (int) $matches[1];
+            
+            // Known transient cURL errors:
+            // 28: CURLE_OPERATION_TIMEDOUT (Timeout)
+            // 7: CURLE_COULDNT_CONNECT (Connection refused - might be temporary)
+            // 52: CURLE_GOT_NOTHING (Empty reply from server)
+            // 56: CURLE_RECV_ERROR (Failure in receiving network data)
+            $transientCodes = [28, 7, 52, 56];
+            
+            // Known NON-transient cURL errors:
+            // 6: CURLE_COULDNT_RESOLVE_HOST (DNS failure)
+            // 3: CURLE_URL_MALFORMAT (Malformed URL)
+            // 35, 51, 58, 60, 77: SSL/TLS related errors
+            $nonTransientCodes = [6, 3, 35, 51, 58, 60, 77];
+            
+            if (in_array($curlErrorCode, $nonTransientCodes, true)) {
+                return false; // Definitely not transient
+            }
+            
+            if (in_array($curlErrorCode, $transientCodes, true)) {
+                return true; // Definitely transient
+            }
+        }
+        
+        // Fallback: Check if the message contains timeout-related keywords
+        $lowerMessage = strtolower($message);
+        if (str_contains($lowerMessage, 'timeout') || str_contains($lowerMessage, 'timed out')) {
+            return true;
+        }
+        
+        // By default, assume non-transient to prevent retry amplification on unknown errors
+        return false;
     }
 }

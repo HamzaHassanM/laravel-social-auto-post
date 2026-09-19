@@ -8,13 +8,22 @@ use PHPUnit\Framework\TestCase;
 
 class SafeMediaFetcherTest extends TestCase
 {
+    private array $tempFilesToCleanup = [];
+
+    public function trackTempFile(string $path): void
+    {
+        $this->tempFilesToCleanup[] = $path;
+    }
+
     protected function tearDown(): void
     {
-        // Clean up temp files that might have leaked
-        $files = glob(sys_get_temp_dir() . '/social_post_media_*');
-        foreach ($files as $file) {
-            @unlink($file);
+        // Clean up only temp files created by this specific test
+        foreach ($this->tempFilesToCleanup as $file) {
+            if (file_exists($file)) {
+                @unlink($file);
+            }
         }
+        $this->tempFilesToCleanup = [];
         
         \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
         parent::tearDown();
@@ -241,13 +250,8 @@ class SafeMediaFetcherTest extends TestCase
      */
     public function test_redirect_final_file_contains_only_target_body(): void
     {
-        // httpbin.org/image/jpeg reliably returns a real JPEG (Content-Type: image/jpeg).
-        // httpbin.org/redirect-to?url=<target>&status_code=302 returns a 302 whose
-        // response body is a short HTML snippet — exactly what triggers Bug 1.
-        // Before the fix, the HTML body was prepended to the JPEG bytes, making
-        // finfo_file() report "text/html" instead of "image/jpeg".
-        $targetUrl   = 'https://httpbin.org/image/jpeg';
-        $redirectUrl = 'https://httpbin.org/redirect-to?url=' . urlencode($targetUrl) . '&status_code=302';
+        // https://picsum.photos/200/300 returns a 302 redirect to a specific image URL.
+        $redirectUrl = 'https://picsum.photos/200/300';
 
         $fetcher  = new SafeMediaFetcher(1024 * 1024, []); // disable MIME check; we inspect manually
         $tempFile = $fetcher->execute($redirectUrl);
@@ -272,17 +276,21 @@ class SafeMediaFetcherTest extends TestCase
     }
     public function test_ignores_ambient_proxy_environment_variables(): void
     {
+        $originalHttpProxy = getenv('HTTP_PROXY');
+        $originalHttpsProxy = getenv('HTTPS_PROXY');
+
         // Set a dummy HTTP_PROXY that points to an invalid/non-existent server
         putenv('HTTP_PROXY=http://127.0.0.1:9999');
         putenv('HTTPS_PROXY=http://127.0.0.1:9999');
 
         try {
-            $url = 'https://httpbin.org/image/jpeg';
+            $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
             $fetcher = new SafeMediaFetcher(1024 * 1024, []); // disable MIME checking for simplicity
 
             // If the proxy is used, this will fail with a connection refused error or timeout.
             // If CURLOPT_PROXY => '' works, it will bypass the proxy and succeed.
             $tempFile = $fetcher->execute($url);
+            $this->trackTempFile($tempFile);
             
             $this->assertFileExists($tempFile);
             $this->assertGreaterThan(0, filesize($tempFile));
@@ -291,9 +299,18 @@ class SafeMediaFetcherTest extends TestCase
                 @unlink($tempFile);
             }
         } finally {
-            // Clean up environment variables
-            putenv('HTTP_PROXY');
-            putenv('HTTPS_PROXY');
+            // Restore environment variables
+            if ($originalHttpProxy !== false) {
+                putenv("HTTP_PROXY=$originalHttpProxy");
+            } else {
+                putenv('HTTP_PROXY');
+            }
+
+            if ($originalHttpsProxy !== false) {
+                putenv("HTTPS_PROXY=$originalHttpsProxy");
+            } else {
+                putenv('HTTPS_PROXY');
+            }
         }
     }
 

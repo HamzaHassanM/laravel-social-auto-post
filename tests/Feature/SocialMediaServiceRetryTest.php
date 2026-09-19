@@ -59,7 +59,7 @@ class SocialMediaServiceRetryTest extends TestCase
         } catch (SocialMediaException $e) {
             $this->assertNotInstanceOf(RateLimitException::class, $e);
             $this->assertNotInstanceOf(RetryableException::class, $e);
-            $this->assertStringContainsString('API request failed (HTTP 400)', $e->getMessage());
+            $this->assertStringContainsString('API request failed: Bad Request', $e->getMessage());
         }
         $duration = microtime(true) - $start;
 

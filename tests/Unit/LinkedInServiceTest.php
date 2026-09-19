@@ -328,4 +328,24 @@ class LinkedInServiceTest extends TestCase
         $this->assertArrayHasKey('id', $result);
         $this->assertEquals('789', $result['id']);
     }
+
+    public function testShareImageWithInvalidLocalFile()
+    {
+        $service = LinkedInService::getInstance();
+        
+        $this->expectException(SocialMediaException::class);
+        $this->expectExceptionMessage('Invalid or unreadable local file provided');
+        
+        $service->shareImage('Test image post', '/path/to/non/existent/image.jpg');
+    }
+
+    public function testShareVideoWithInvalidLocalFile()
+    {
+        $service = LinkedInService::getInstance();
+        
+        $this->expectException(SocialMediaException::class);
+        $this->expectExceptionMessage('Invalid or unreadable local file provided');
+        
+        $service->shareVideo('Test video post', '/path/to/non/existent/video.mp4');
+    }
 }

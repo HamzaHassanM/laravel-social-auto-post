@@ -361,6 +361,10 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
             $isTemp   = false;
         }
 
+        if (!is_file($tempFile) || !is_readable($tempFile)) {
+            throw new SocialMediaException('Invalid or unreadable local file provided.');
+        }
+
         try {
             $imageContent = file_get_contents($tempFile);
             if ($imageContent === false) {
@@ -418,6 +422,10 @@ class LinkedInService extends SocialMediaService implements ShareInterface, Shar
         } else {
             $tempFile = $videoUrl;
             $isTemp   = false;
+        }
+
+        if (!is_file($tempFile) || !is_readable($tempFile)) {
+            throw new SocialMediaException('Invalid or unreadable local file provided.');
         }
 
         try {

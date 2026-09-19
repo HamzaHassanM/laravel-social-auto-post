@@ -115,7 +115,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function share(string $caption, string $url): array
     {
-        $this->validateInput($caption, $url);
+        $this->validateTextUrl($caption, $url);
         
         $text = $this->formatTweetText($caption, $url);
         
@@ -148,7 +148,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateMediaInput($caption, $image_url);
         
         try {
             // Step 1: Upload media
@@ -182,7 +182,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
         try {
             // Step 1: Upload media
@@ -324,17 +324,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      * @param string $url The URL.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $urlOrPath): void
-    {
-        if (empty(trim($caption))) {
-            throw new SocialMediaException('Caption cannot be empty.');
-        }
 
-        // Accept a valid URL or an existing local file path (for pre-downloaded media).
-        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
-            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
-        }
-    }
 
     /**
      * Build Twitter API URL.

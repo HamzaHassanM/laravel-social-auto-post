@@ -21,12 +21,6 @@ class SafeMediaFetcher
     private $fileHandle = null;
 
     /**
-     * Optional handler for overriding fetch behavior in tests.
-     * @var callable|null
-     */
-    public static $fetchHandler = null;
-
-    /**
      * @param int $maxBytes Maximum file size in bytes (default 50MB)
      * @param array $allowedMimeTypes Allowed MIME types prefix (empty array = any)
      */
@@ -47,10 +41,6 @@ class SafeMediaFetcher
      */
     public static function fetch(string $url, ?int $maxBytes = null): string
     {
-        if (is_callable(self::$fetchHandler)) {
-            return call_user_func(self::$fetchHandler, $url, $maxBytes);
-        }
-
         $maxBytes = $maxBytes ?? \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 52428800);
         
         $fetcher = new self($maxBytes);
@@ -62,7 +52,7 @@ class SafeMediaFetcher
      *
      * @throws SocialMediaException
      */
-    public function execute(string $url, int $redirectCount = 0): string
+    private function execute(string $url, int $redirectCount = 0): string
     {
         $maxRedirects = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_redirects', self::MAX_REDIRECTS);
 
@@ -78,10 +68,13 @@ class SafeMediaFetcher
 
         // Validate hostname and resolve to IP
         $host = parse_url($url, PHP_URL_HOST);
-        if (empty($host)) {
-            throw new SocialMediaException("Invalid URL: Hostname missing.");
+        if (!$host) {
+            throw new SocialMediaException('Invalid URL host.');
         }
-        
+        $host = trim($host, '[]');
+        if (($zonePos = strpos($host, '%')) !== false) {
+            $host = substr($host, 0, $zonePos);
+        }
         // Remove IPv6 brackets if present
         $host = trim($host, '[]');
 
@@ -202,9 +195,7 @@ class SafeMediaFetcher
         }
 
         // Validate MIME type
-        if ($redirectCount === 0 || $this->bytesReceived > 0) {
-             $this->validateMimeType();
-        }
+        $this->validateMimeType();
 
         return $this->tempFilePath;
     }
@@ -215,7 +206,9 @@ class SafeMediaFetcher
     public function cleanup(): void
     {
         if ($this->tempFilePath && file_exists($this->tempFilePath)) {
-            @unlink($this->tempFilePath);
+            if (!unlink($this->tempFilePath)) {
+                \Illuminate\Support\Facades\Log::warning("Failed to delete temporary media file: {$this->tempFilePath}");
+            }
         }
     }
 
@@ -242,19 +235,22 @@ class SafeMediaFetcher
             throw new SocialMediaException("Could not resolve hostname: {$host}");
         }
 
-        // Validate the first successfully resolved IP
-        $resolvedIp = $records[0]['ipv6'] ?? $records[0]['ip'] ?? null;
+        // Validate all successfully resolved IPs
+        $resolvedIp = null;
+        foreach ($records as $record) {
+            $ip = $record['ipv6'] ?? $record['ip'] ?? null;
+            if (!$ip) continue;
+
+            if ($enforceSsrfProtection) {
+                $this->validateIpAddress($ip);
+            }
+            $resolvedIp = $resolvedIp ?? $ip;
+        }
         
         if (!$resolvedIp) {
-            throw new SocialMediaException("Hostname resolved to an empty IP record.");
+            throw new SocialMediaException("Hostname resolved to no usable IP record.");
         }
 
-        $enforceSsrfProtection = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.enforce_ssrf_protection', true);
-        
-        if ($enforceSsrfProtection) {
-            $this->validateIpAddress($resolvedIp);
-        }
-        
         return $resolvedIp;
     }
 
@@ -331,7 +327,8 @@ class SafeMediaFetcher
      */
     private function resolveRelativeUrl(string $baseUrl, string $relativeUrl): string
     {
-        if (parse_url($relativeUrl, PHP_URL_SCHEME) != '') {
+        $parsedScheme = parse_url($relativeUrl, PHP_URL_SCHEME);
+        if ($parsedScheme !== null && $parsedScheme !== '') {
             return $relativeUrl;
         }
 

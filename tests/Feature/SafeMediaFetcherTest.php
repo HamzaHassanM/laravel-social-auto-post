@@ -125,8 +125,8 @@ class SafeMediaFetcherTest extends TestCase
         // README.md is a text file.
         $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
         
-        $fetcher = new SafeMediaFetcher(1024 * 1024, []); // Empty array = no mime check
-        $tempFile = $fetcher->execute($url);
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.verify_media_mime_type'] = false;
+        $tempFile = SafeMediaFetcher::fetch($url);
         
         $this->assertFileExists($tempFile);
         $content = file_get_contents($tempFile);
@@ -135,6 +135,7 @@ class SafeMediaFetcherTest extends TestCase
         // Caller is responsible for cleanup
         unlink($tempFile);
         $this->assertFileDoesNotExist($tempFile);
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
     }
 
     public function test_it_rejects_redirect_to_private_ip()
@@ -253,8 +254,8 @@ class SafeMediaFetcherTest extends TestCase
         // https://picsum.photos/200/300 returns a 302 redirect to a specific image URL.
         $redirectUrl = 'https://picsum.photos/200/300';
 
-        $fetcher  = new SafeMediaFetcher(1024 * 1024, []); // disable MIME check; we inspect manually
-        $tempFile = $fetcher->execute($redirectUrl);
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.verify_media_mime_type'] = false;
+        $tempFile = SafeMediaFetcher::fetch($redirectUrl);
 
         try {
             $this->assertFileExists($tempFile);
@@ -272,6 +273,7 @@ class SafeMediaFetcherTest extends TestCase
             if (file_exists($tempFile)) {
                 @unlink($tempFile);
             }
+            \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
         }
     }
     public function test_ignores_ambient_proxy_environment_variables(): void
@@ -285,11 +287,11 @@ class SafeMediaFetcherTest extends TestCase
 
         try {
             $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/master/README.md';
-            $fetcher = new SafeMediaFetcher(1024 * 1024, []); // disable MIME checking for simplicity
+            \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.verify_media_mime_type'] = false;
 
             // If the proxy is used, this will fail with a connection refused error or timeout.
             // If CURLOPT_PROXY => '' works, it will bypass the proxy and succeed.
-            $tempFile = $fetcher->execute($url);
+            $tempFile = SafeMediaFetcher::fetch($url);
             $this->trackTempFile($tempFile);
             
             $this->assertFileExists($tempFile);
@@ -299,6 +301,7 @@ class SafeMediaFetcherTest extends TestCase
                 @unlink($tempFile);
             }
         } finally {
+            \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
             // Restore environment variables
             if ($originalHttpProxy !== false) {
                 putenv("HTTP_PROXY=$originalHttpProxy");

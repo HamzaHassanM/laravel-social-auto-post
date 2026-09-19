@@ -62,7 +62,6 @@ abstract class SocialMediaService
                             "API request failed: {$errorMessage}",
                             0,
                             null,
-                            null,
                             $status,
                             $attempt
                         );
@@ -76,7 +75,10 @@ abstract class SocialMediaService
                     ]);
                     
                     // Bounded backoff for 5xx only
-                    sleep(pow(2, $attempt - 1));
+                    $backoffBase = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_backoff_base', 2);
+                    $sleepTime = pow($backoffBase, $attempt - 1);
+                    // Add up to 500ms of jitter to prevent thundering herd
+                    usleep((int)($sleepTime * 1000000) + rand(0, 500000));
                     continue;
                 }
 
@@ -106,7 +108,6 @@ abstract class SocialMediaService
                         0,
                         $e,
                         null,
-                        null,
                         $attempt
                     );
                 }
@@ -118,7 +119,9 @@ abstract class SocialMediaService
                 ]);
                 
                 $backoffBase = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.retry_backoff_base', 2);
-                sleep(pow($backoffBase, $attempt - 1));
+                $sleepTime = pow($backoffBase, $attempt - 1);
+                // Add up to 500ms of jitter to prevent thundering herd
+                usleep((int)($sleepTime * 1000000) + rand(0, 500000));
             } catch (\Exception $e) {
                 // Non-transient or generic exceptions -> Fail Fast
                 throw new SocialMediaException("Request failed unexpectedly: " . $e->getMessage(), 0, $e);
@@ -186,6 +189,32 @@ abstract class SocialMediaService
     }
 
     /**
+     * Validate caption and a URL-only input (text/image posts that never accept local paths).
+     */
+    protected function validateTextUrl(string $caption, string $url): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            throw new SocialMediaException('Invalid URL provided.');
+        }
+    }
+
+    /**
+     * Validate caption and a URL-or-local-path input (video/media uploads).
+     */
+    protected function validateMediaInput(string $caption, string $urlOrPath): void
+    {
+        if (empty(trim($caption))) {
+            throw new SocialMediaException('Caption cannot be empty.');
+        }
+        if (!filter_var($urlOrPath, FILTER_VALIDATE_URL) && !file_exists($urlOrPath)) {
+            throw new SocialMediaException('Invalid URL provided: must be a valid URL or an existing local file path.');
+        }
+    }
+
+    /**
      * Download file from URL securely using SafeMediaFetcher.
      * Note: This returns a temporary local file path. It is the caller's responsibility
      * to ensure the file is cleaned up after use.
@@ -201,29 +230,6 @@ abstract class SocialMediaService
         return \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::fetch($url);
     }
 
-    /**
-     * Download file from URL with error handling.
-     *
-     * @deprecated Use downloadMediaToTempFile() instead to avoid high memory consumption.
-     * @param string $url The file URL.
-     * @return string The downloaded file content.
-     * @throws SocialMediaException
-     */
-    protected function downloadFile(string $url): string
-    {
-        $tempPath = $this->downloadMediaToTempFile($url);
-        $content = file_get_contents($tempPath);
-        
-        if (file_exists($tempPath)) {
-            @unlink($tempPath);
-        }
-        
-        if ($content === false) {
-            throw new SocialMediaException('Failed to download file from URL: ' . $url);
-        }
-        
-        return $content;
-    }
 
     /**
      * Determine if a ConnectionException is transient (retryable) based on cURL error codes.

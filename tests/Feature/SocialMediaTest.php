@@ -192,22 +192,10 @@ class SocialMediaTest extends TestCase
         // A public URL that returns a small valid JPEG
         $url = 'https://httpbin.org/image/jpeg';
         
-        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_image.jpg');
-        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = function($fetchUrl) use ($url, $fixturePath) {
-            if ($fetchUrl === $url) {
-                $tempPath = sys_get_temp_dir() . '/' . uniqid('mock_') . '.jpg';
-                copy($fixturePath, $tempPath);
-                return $tempPath;
-            }
-            throw new \Exception("Unexpected URL fetched: $fetchUrl");
-        };
-        
         $result = Twitter::shareImage('Test tweet with remote image', $url);
 
         $this->assertArrayHasKey('data', $result);
         $this->assertEquals('456_remote', $result['data']['id']);
-        
-        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = null;
     }
 
     public function testTwitterTimeline()
@@ -344,24 +332,15 @@ class SocialMediaTest extends TestCase
             'https://www.googleapis.com/youtube/v3/*' => Http::response(['id' => 'youtube123_remote'], 200),
         ]);
 
-        $url = 'https://raw.githubusercontent.com/HamzaHassanM/laravel-social-auto-post/fix-ssrf-phase-2/tests/Fixtures/test_video.mp4';
-        
-        $fixturePath = realpath(__DIR__ . '/../../tests/Fixtures/test_video.mp4');
-        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = function($fetchUrl) use ($url, $fixturePath) {
-            if ($fetchUrl === $url) {
-                $tempPath = sys_get_temp_dir() . '/' . uniqid('mock_') . '.mp4';
-                copy($fixturePath, $tempPath);
-                return $tempPath;
-            }
-            throw new \Exception("Unexpected URL fetched: $fetchUrl");
-        };
+        $url = 'https://httpbin.org/image/jpeg'; // using image since we just need any valid file download
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::$testOverrides['autopost.verify_media_mime_type'] = false;
         
         $result = YouTube::shareVideo('Test YouTube remote video', $url);
 
         $this->assertArrayHasKey('id', $result);
         $this->assertEquals('youtube123_remote', $result['id']);
         
-        \HamzaHassanM\LaravelSocialAutoPost\Utils\SafeMediaFetcher::$fetchHandler = null;
+        \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::clearOverrides();
     }
 
     public function testYouTubeCommunityPost()

@@ -5,17 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.6.0] - 2026-09-19
 
 ### Added
-- **SSRF Protection**: Added `SafeMediaFetcher` to prevent SSRF and DNS rebinding attacks when downloading remote media files. You can configure this via the `enforce_ssrf_protection` and `max_media_size` keys in `config/autopost.php`.
-- **Advanced Retry Logic**: Introduced `RetryableException` and `RateLimitException` to distinguish between transient (5xx, network timeouts) and persistent (4xx) errors. Failed 4xx API calls will now fail-fast to save execution time, while 5xx errors will automatically retry with exponential backoff.
+- **Advanced Retry Logic**: Introduced `RetryableException` and `RateLimitException` to distinguish between transient (5xx, network timeouts) and persistent (4xx) errors. Failed 4xx API calls will now fail-fast to save execution time, while 5xx errors will automatically retry with exponential backoff and random jitter (to prevent thundering herd).
+- **Consolidated Validation**: Added `validateTextUrl()` and `validateMediaInput()` to the base `SocialMediaService` class to DRY up platform-specific logic.
 
 ### Changed
-- **Local File Uploads**: `SocialMediaService::downloadFile()` is now `@deprecated`. Services have been updated to use `downloadMediaToTempFile()` which provides robust memory management and prevents OOM crashes on large files.
+- **Local File Uploads**: `SocialMediaService::downloadFile()` has been completely removed (previously deprecated). All services now exclusively use `downloadMediaToTempFile()` which provides robust memory management and prevents OOM crashes on large files.
+- `SafeMediaFetcher::execute()` has been made `private` to enforce usage of the secure `fetch()` wrapper. The `$fetchHandler` backdoor for testing was also removed.
 
 ### Security
-- Fixed Server-Side Request Forgery (SSRF) vulnerabilities across all platforms when processing external media URLs.
+- **SSRF Hardening**: Added `SafeMediaFetcher` to prevent SSRF when downloading remote media files. Includes advanced protection against DNS rebinding (validating all DNS A/AAAA records) and filter bypasses using IPv6 Zone Identifiers (`%eth0`).
 
 ## [2.5.0] - 2026-05-24
 

@@ -74,9 +74,9 @@ class InstagramService extends SocialMediaService implements ShareInterface, Sha
     public static function getInstance(): InstagramService
     {
         if (self::$instance === null) {
-            $accessToken = config('autopost.instagram_access_token');
-            $instagramAccountId = config('autopost.instagram_account_id');
-            $facebookPageId = config('autopost.facebook_page_id');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.instagram_access_token');
+            $instagramAccountId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.instagram_account_id');
+            $facebookPageId = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.facebook_page_id');
 
             if (!$accessToken || !$instagramAccountId || !$facebookPageId) {
                 throw new SocialMediaException('Instagram credentials are not properly configured.');

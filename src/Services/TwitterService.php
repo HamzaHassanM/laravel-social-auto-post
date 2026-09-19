@@ -90,11 +90,11 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
     public static function getInstance(): TwitterService
     {
         if (self::$instance === null) {
-            $bearerToken = config('autopost.twitter_bearer_token');
-            $apiKey = config('autopost.twitter_api_key');
-            $apiSecret = config('autopost.twitter_api_secret');
-            $accessToken = config('autopost.twitter_access_token');
-            $accessTokenSecret = config('autopost.twitter_access_token_secret');
+            $bearerToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_bearer_token');
+            $apiKey = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_key');
+            $apiSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_api_secret');
+            $accessToken = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token');
+            $accessTokenSecret = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.twitter_access_token_secret');
 
             if (!$bearerToken || !$apiKey || !$apiSecret || !$accessToken || !$accessTokenSecret) {
                 throw new SocialMediaException('Twitter credentials are not properly configured.');
@@ -115,7 +115,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function share(string $caption, string $url): array
     {
-        $this->validateInput($caption, $url);
+        $this->validateTextUrl($caption, $url);
         
         $text = $this->formatTweetText($caption, $url);
         
@@ -148,7 +148,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareImage(string $caption, string $image_url): array
     {
-        $this->validateInput($caption, $image_url);
+        $this->validateMediaInput($caption, $image_url);
         
         try {
             // Step 1: Upload media
@@ -182,7 +182,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     public function shareVideo(string $caption, string $video_url): array
     {
-        $this->validateInput($caption, $video_url);
+        $this->validateMediaInput($caption, $video_url);
         
         try {
             // Step 1: Upload media
@@ -260,26 +260,49 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      */
     private function uploadMedia(string $mediaUrl, string $type): string
     {
-        // Download media content
-        $mediaContent = file_get_contents($mediaUrl);
-        if ($mediaContent === false) {
-            throw new SocialMediaException('Failed to download media from URL: ' . $mediaUrl);
+        // Accept both a remote URL (downloaded securely) and a local file path.
+        // Local paths are used in tests and allow callers that have already
+        // validated / downloaded the file themselves.
+        if (filter_var($mediaUrl, FILTER_VALIDATE_URL)) {
+            $tempFile = $this->downloadMediaToTempFile($mediaUrl);
+            $isTemp   = true;
+        } else {
+            $tempFile = $mediaUrl;
+            $isTemp   = false;
         }
 
-        // Upload to Twitter
-        $url = 'https://upload.twitter.com/1.1/media/upload.json';
-        $params = [
-            'media' => base64_encode($mediaContent),
-            'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image'
-        ];
+        try {
+            $maxMediaSize = \HamzaHassanM\LaravelSocialAutoPost\Utils\ConfigHelper::get('autopost.max_media_size', 50 * 1024 * 1024);
+            
+            if (filesize($tempFile) > $maxMediaSize) {
+                throw new SocialMediaException("File size exceeds the configured maximum media size limit for Twitter upload.");
+            }
 
-        $response = $this->sendRequest($url, 'post', $params);
-        
-        if (!isset($response['media_id_string'])) {
-            throw new SocialMediaException('Failed to upload media to Twitter');
+            // Read the safely limited file into memory for Twitter API
+            $mediaContent = file_get_contents($tempFile);
+            if ($mediaContent === false) {
+                throw new SocialMediaException('Failed to read media file: ' . $tempFile);
+            }
+
+            // Upload to Twitter
+            $url    = 'https://upload.twitter.com/1.1/media/upload.json';
+            $params = [
+                'media'          => base64_encode($mediaContent),
+                'media_category' => $type === 'video' ? 'tweet_video' : 'tweet_image',
+            ];
+
+            $response = $this->sendRequest($url, 'post', $params);
+
+            if (!isset($response['media_id_string'])) {
+                throw new SocialMediaException('Failed to upload media to Twitter');
+            }
+
+            return $response['media_id_string'];
+        } finally {
+            if ($isTemp && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
         }
-
-        return $response['media_id_string'];
     }
 
     /**
@@ -301,16 +324,7 @@ class TwitterService extends SocialMediaService implements ShareInterface, Share
      * @param string $url The URL.
      * @throws SocialMediaException
      */
-    private function validateInput(string $caption, string $url): void
-    {
-        if (empty(trim($caption))) {
-            throw new SocialMediaException('Caption cannot be empty.');
-        }
 
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new SocialMediaException('Invalid URL provided.');
-        }
-    }
 
     /**
      * Build Twitter API URL.
